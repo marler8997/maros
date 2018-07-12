@@ -1,0 +1,21 @@
+
+bootloader crystal
+
+# TODO: make kernel configurable, i.e.
+# kernel linux
+# kernel someOtherKernel...
+# kernel linuxStable
+# kernel linux3.2
+kernelPath linux_stable
+kernelRepo git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+kernelCommandLine root=/dev/sda1 console=ttyS0
+#kernelCommandLine root=/dev/sda1
+
+imageFile maros.img
+
+sectorSize 512B
+imageSize 18M
+crystalBootloaderKernelReserve 11M
+rootfsPartition ext4 5M
+swapPartition 1M
+
