@@ -19,21 +19,21 @@ void dumpProgramInput(T,U)(T argv, U envp)
         print(stdout, "cwd \"", result, "\"\n");
     }
     */
-    if (argv)
+    if (argv.val)
     {
         for(size_t i = 0; ;i++)
         {
-            auto arg = argv[i];
-            if (!arg) break;
+            auto arg = argv.val[i];
+            if (!arg.val) break;
             print(stdout, "arg", i, " \"", arg, "\"\n");
         }
     }
-    if (envp)
+    if (envp.val)
     {
         for(size_t i = 0; ;i++)
         {
-            auto env = envp[i];
-            if (!env) break;
+            auto env = envp.val[i];
+            if (!env.val) break;
             print(stdout, "env \"", env, "\"\n");
         }
     }

@@ -355,9 +355,8 @@ off_t getFileSize(cstring filename)
     //if (result.failed) throw new FileException(filename, "stat failed");
     return result.val;
 }
-pragma(inline)
-auto getFileSize(T)(T filename)
+auto getFileSize(const(char)[] filename)
 {
     mixin tempCString!("filenameCStr", "filename");
-    return getFileSize(filenameCStr.str);
+    return getFileSize(filenameCStr.val);
 }

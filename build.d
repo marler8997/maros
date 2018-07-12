@@ -98,11 +98,11 @@ void logMkdir(string pathname, mode_t mode = DefaultDirMode)
     mixin tempCString!("pathnameCStr", "pathname");
 
     // get the current state of the pathnameCStr
-    auto currentMode = tryGetFileMode(pathnameCStr.str);
+    auto currentMode = tryGetFileMode(pathnameCStr.val);
     if (currentMode.failed)
     {
-        log("mkdir \"", pathnameCStr.str, "\" mode=0x", mode.formatHex);
-        auto result = mkdir(pathnameCStr.str, mode);
+        log("mkdir \"", pathnameCStr.val, "\" mode=0x", mode.formatHex);
+        auto result = mkdir(pathnameCStr.val, mode);
         if (result.failed)
         {
             logError("mkdir failed, returned ", result.numval);
@@ -342,7 +342,7 @@ struct Config
     auto mapImage(size_t offset, size_t length, Flag!"writeable" writeable) const
     {
         mixin tempCString!("imageFileTempCString", "imageFile");
-        return MappedFile.openAndMap(imageFileTempCString.str, offset, length, writeable);
+        return MappedFile.openAndMap(imageFileTempCString.val, offset, length, writeable);
     }
 
     Mounts getMounts() const
@@ -644,8 +644,8 @@ struct Rootfs
         mixin tempCString!("typeCStr", "config.rootfsType");
         auto options = format("loop,rw,offset=%s", Rootfs.getPartitionOffset(config) * 512);
         mixin tempCString!("optionsCStr", "options");
-        log("mount -t ", typeCStr.str, " -o ", optionsCStr.str, " ", imageFileCStr.str, " ", targetCStr.str);
-        auto result = mount(imageFileCStr.str, targetCStr.str, typeCStr.str, 0, optionsCStr.str.raw);
+        log("mount -t ", typeCStr.val, " -o ", optionsCStr.val, " ", imageFileCStr.val, " ", targetCStr.val);
+        auto result = mount(imageFileCStr.val, targetCStr.val, typeCStr.val, 0, optionsCStr.val.raw);
         if (result != 0)
         {
             logError("mount failed, returned ", result);
@@ -850,12 +850,12 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
         const buildJsonFilename = (toolObjPath ~ "/info.json").makeSentinel;
 
         bool needsBuild = true;
-        if (!force && fileExists(buildJsonFilename.ptr))
+        if (!force && fileExists(buildJsonFilename.ptr.asConst))
         {
             auto buildFiles = tryGetBuildFiles(buildJsonFilename, src, includePaths, toolObjPath);
             if (buildFiles)
             {
-                auto binaryTime = binaryFilename.array.timeLastModified(SysTime.min);
+                auto binaryTime = binaryFilename.val.timeLastModified(SysTime.min);
                 if (binaryTime > SysTime.min)
                 {
                     needsBuild = false;
@@ -879,7 +879,7 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
                 .noLink
                 .outputDir(toolObjPath)
                 .preserveOutputPaths
-                .jsonFile(buildJsonFilename.array)
+                .jsonFile(buildJsonFilename.val)
                 .jsonIncludes("semantics")
                 .includePaths(includePaths)
                 .source(src)
@@ -893,12 +893,12 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
                 linker = "/usr/bin/gold --strip-lto-sections";
             }
 
-            run(linker ~ " -static --output " ~ binaryFilename.array ~ " " ~ buildFiles.map!(s => s.obj).join(" "));
+            run(linker ~ " -static --output " ~ binaryFilename.val ~ " " ~ buildFiles.map!(s => s.obj).join(" "));
 
             if (tool.setRootSuid)
             {
-                run("sudo chown root:root " ~ binaryFilename.array);
-                run("sudo chmod +s " ~ binaryFilename.array);
+                run("sudo chown root:root " ~ binaryFilename.val);
+                run("sudo chmod +s " ~ binaryFilename.val);
             }
             if (tool.caps)
             {
@@ -920,12 +920,12 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
                     logError("tool caps contain unhandled flags 0x", caps.formatHex);
                     return 1; // fail
                 }
-                run("sudo setcap " ~ capString ~ "+ep " ~ binaryFilename.array);
+                run("sudo setcap " ~ capString ~ "+ep " ~ binaryFilename.val);
             }
         }
         else
         {
-            log(binaryFilename.array, " is up-to-date");
+            log(binaryFilename.val, " is up-to-date");
         }
     }
     return 0;
@@ -1055,13 +1055,13 @@ Command("installBootloader", "install the bootloader", cmdInSequence, function(s
                 "bootloader binary '%s' does not exist, have you run 'buildBootloader'?",
                 files.binary));
             mixin tempCString!("binaryTempCString", "files.binary");
-            const bootloaderSize = getFileSize(binaryTempCString.str).asSizeT("bootloader image size ", " is too big to map");
+            const bootloaderSize = getFileSize(binaryTempCString.val).asSizeT("bootloader image size ", " is too big to map");
             log("bootloader file is ", bootloaderSize, " bytes");
             enforce(bootloaderSize <= CrystalReserveSize,
                 format("bootloader is too large (%s bytes, max is %s bytes)", bootloaderSize, CrystalReserveSize));
             auto mappedImage = config.mapImage(0, CrystalReserveSize, Yes.writeable);
             {
-                auto bootloaderImage = MappedFile.openAndMap(binaryTempCString.str, 0, mbr.BootstrapSize, No.writeable);
+                auto bootloaderImage = MappedFile.openAndMap(binaryTempCString.val, 0, mbr.BootstrapSize, No.writeable);
                 log("copying bootsector code (", mbr.BootstrapSize, " bytes)...");
                 memcpy(mappedImage.ptr, bootloaderImage.ptr, mbr.BootstrapSize);
                 if (bootloaderSize > 512)
@@ -1106,10 +1106,10 @@ Command("installKernel", "install the kernel to the rootfs", cmdInSequence, func
     {
         // kernel gets installed starting at sector 17 of the disk
         mixin tempCString!("kernelPathTempCString", "kernelPaths.image");
-        const kernelImageSize = getFileSize(kernelPathTempCString.str)
+        const kernelImageSize = getFileSize(kernelPathTempCString.val)
             .asSizeT("kernel image size ", " is too big to map");
         log("kernel image is \"", kernelPaths.image, "\" is ", kernelImageSize, " bytes");
-        auto kernelImageMap = MappedFile.openAndMap(kernelPathTempCString.str, 0, kernelImageSize, No.writeable);
+        auto kernelImageMap = MappedFile.openAndMap(kernelPathTempCString.val, 0, kernelImageSize, No.writeable);
         auto diskImageMap = config.mapImage(0, CrystalReserveSize + kernelImageSize, Yes.writeable);
 
         log("Copying ", kernelImageSize, " bytes from kernel image to disk image...");

@@ -19,6 +19,74 @@ private template defaultSentinel(T)
     else                                   enum defaultSentinel = T.init;
 }
 
+struct SentinelPtr(T, immutable T sentinelValue = defaultSentinel!T)
+{
+    /**
+    Interpret a raw pointer `ptr` as a `SentinelPtr` without checking that
+    the array it is pointing to has a sentinel value.
+    Params:
+        ptr = the raw pointer to be converted
+    Returns:
+        the given `ptr` interpreted as a `SentinelPtr`
+    */
+    pragma(inline) static auto assume(T* ptr) pure { return typeof(this)(ptr); }
+    pragma(inline) static auto nullValue() { return typeof(this)(null); }
+
+    private T* value;
+
+    pragma(inline) T* val() const { return cast(T*)value; }
+
+    pragma(inline) bool isNull() const { return value is null; }
+
+    static if (is(T U == const U))
+    {
+        private alias TUnqual = U;
+        pragma(inline) SentinelPtr!T asConst() const { return this; }
+    }
+    else static if (is(T U == immutable U))
+    {
+        private alias TUnqual = U;
+        pragma(inline) SentinelPtr!(const U) asConst() const { return SentinelPtr!(const U).assume(value); }
+    }
+    else
+    {
+        private alias TUnqual = T;
+        pragma(inline) SentinelPtr!(const T) asConst() const { return SentinelPtr!(const T).assume(value); }
+    }
+
+    static if (is(TUnqual == char) && sentinelValue == '\0')
+    {
+        void toString(Printer)(Printer printer) const
+        {
+            import stdm.string : strlen;
+            auto size = strlen(SentinelPtr!(const char, '\0').assume(value));
+            printer.put(value[0 .. size]);
+        }
+    }
+}
+struct SentinelArray(T, immutable T sentinelValue = defaultSentinel!T)
+{
+    /**
+    Interpret `array` as a `SentinalArray` without checking that
+    the array it is pointing to has a sentinel value.
+    Params:
+        array = the array to be converted
+    Returns:
+        the given `array` interpreted as a `SentinelArray`
+    */
+    pragma(inline) static auto assume(T[] array) pure { return typeof(this)(array); }
+
+    private T[] value;
+
+    pragma(inline) T[] val() const { return cast(T[])value; }
+
+    pragma(inline) SentinelPtr!T ptr() const { return SentinelPtr!T.assume(value.ptr); }
+}
+
+
+version (Comment)
+{
+
 // NOTE: T should be unqalified (not const/immutable etc)
 //       This "unqualification" of T is done by the `SentinelPtr` and `SentinelArray` templates.
 private template SentinelTemplate(T, immutable T sentinelValue)
@@ -308,6 +376,7 @@ template SentinelPtr(T, T sentinelValue = defaultSentinel!T)
     else static if (is(T U == immutable U)) alias SentinelPtr = SentinelTemplate!(U, sentinelValue).ImmutablePtr;
     else                                    alias SentinelPtr = SentinelTemplate!(T, sentinelValue).MutablePtr;
 }
+
 /**
 An array with the extra requirement that it ends with a sentinel value at `ptr[length]`.
 */
@@ -316,6 +385,8 @@ template SentinelArray(T, T sentinelValue = defaultSentinel!T)
          static if (is(T U ==     const U)) alias SentinelArray = SentinelTemplate!(U, sentinelValue).ConstArray;
     else static if (is(T U == immutable U)) alias SentinelArray = SentinelTemplate!(U, sentinelValue).ImmutableArray;
     else                                    alias SentinelArray = SentinelTemplate!(T, sentinelValue).MutableArray;
+}
+
 }
 
 /**
@@ -351,11 +422,11 @@ if the given array does not contain the sentinel value at `array.ptr[array.lengt
 Coerce the given `array` to a `SentinelArray` without verifying that it
 contains the sentinel value at `array.ptr[array.length]`.
 */
-@property auto assumeSentinel(T)(T[] array) @system
+pragma(inline) @property auto assumeSentinel(T)(T[] array) @system
 {
     return SentinelArray!T.assume(array);
 }
-@property auto assumeSentinel(alias sentinelValue, T)(T[] array) @system
+pragma(inline) @property auto assumeSentinel(alias sentinelValue, T)(T[] array) @system
     if (is(typeof(sentinelValue == T.init)))
 {
     return SentinelArray!(T, sentinelValue).assume(array);
@@ -525,27 +596,27 @@ is changed to SentinelString.
 pragma(inline) @property SentinelString lit(string s)() @trusted
 {
    SentinelString ss = void;
-   ss.array = s;
+   ss.value = s;
    return ss;
 }
 /// ditto
 pragma(inline) @property SentinelWstring lit(wstring s)() @trusted
 {
    SentinelWstring ss = void;
-   ss.array = s;
+   ss.value = s;
    return ss;
 }
 /// ditto
 pragma(inline) @property SentinelDstring lit(dstring s)() @trusted
 {
    SentinelDstring ss = void;
-   ss.array = s;
+   ss.value = s;
    return ss;
 }
 pragma(inline) @property SentinelPtr!(immutable(char)) litPtr(string s)() @trusted
 {
    SentinelPtr!(immutable(char)) p = void;
-   p._ptr = s.ptr;
+   p.value = s.ptr;
    return p;
 }
 

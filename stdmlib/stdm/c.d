@@ -70,27 +70,28 @@ struct TempCString
     import stdm.array : acopy;
     import stdm.mem : malloc, free;
 
-    cstring str;
+    private cstring cstr;
     private bool needToFree;
+    cstring val() const { return cast(cstring)cstr; }
     this(const(char)[] str, void* allocaBuffer)
     {
         import stdm.sentinel : assumeSentinel;
         if (allocaBuffer)
-            this.str = (cast(char*)allocaBuffer).assumeSentinel;
+            this.cstr = (cast(char*)allocaBuffer).assumeSentinel.asConst;
         else
         {
-            this.str = (cast(char*)malloc(str.length + 1)).assumeSentinel;
-            assert(this.str, "malloc returned NULL");
+            this.cstr = (cast(char*)malloc(str.length + 1)).assumeSentinel.asConst;
+            assert(this.cstr.val, "malloc returned NULL");
             this.needToFree = true;
         }
-        acopy(this.str.raw, str);
-        (cast(char*)this.str)[str.length] = '\0';
+        acopy(this.cstr.val, str);
+        (cast(char*)this.cstr.val)[str.length] = '\0';
     }
     ~this()
     {
         if (needToFree)
         {
-            free(cast(void*)this.str.raw);
+            free(cast(void*)this.cstr.val);
             needToFree = false;
             //this.str = null;
         }        

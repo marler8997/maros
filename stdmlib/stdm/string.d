@@ -26,10 +26,10 @@ size_t strlen(cstring str)
     {
         for (size_t i = 0; ;i++)
         {
-            if (str.raw[i] == '\0')
+            if (str.val[i] == '\0')
                 return i;
         }
     }
     else
-        return core.stdc.string.strlen(str.raw);
+        return core.stdc.string.strlen(str.val);
 }

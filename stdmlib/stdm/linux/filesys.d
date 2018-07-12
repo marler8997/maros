@@ -21,7 +21,7 @@ alias umask    = sys_umask;
 pragma(inline) auto chdir(T)(T path) if (!is(path : cstring))
 {
     mixin tempCString!("pathCStr", "path");
-    return sys_chdir(pathCStr.str);
+    return sys_chdir(pathCStr.val);
 }
 
 

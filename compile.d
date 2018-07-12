@@ -154,11 +154,11 @@ BuildSource[] tryGetBuildFiles(SentinelString jsonFilename, const string mainSou
     import common : MappedFile;
 
     //mixin tempCString!("jsonFilename", "jsonFilenameString", "0");
-    auto jsonFileSize = getFileSize(jsonFilename.ptr);
-    auto jsonFile = MappedFile.openAndMap(jsonFilename.ptr, 0, jsonFileSize, No.writeable);
+    auto jsonFileSize = getFileSize(jsonFilename.ptr.asConst);
+    auto jsonFile = MappedFile.openAndMap(jsonFilename.ptr.asConst, 0, jsonFileSize, No.writeable);
     scope (exit) jsonFile.unmapAndClose();
     auto jsonText = (cast(char*)jsonFile.ptr)[0 .. jsonFileSize].assumeUnique;
-    auto buildJson = parseJson(jsonText, jsonFilename.array);
+    auto buildJson = parseJson(jsonText, jsonFilename.val);
 
     const modules = buildJson.as!JsonObject
         .getAs!JsonObject("semantics")

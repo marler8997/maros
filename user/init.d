@@ -40,12 +40,12 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
     //
     // TODO: mount filesystems like /proc and /sys
     //
-    static immutable mountProg = litPtr!"/sbin/mount";
-    enforceDir(litPtr!"/proc",
+    static immutable mountProg = litPtr!"/sbin/mount".asConst;
+    enforceDir(litPtr!"/proc".asConst,
         ModeFlags.readUser  | ModeFlags.execUser  |
         ModeFlags.readGroup | ModeFlags.execGroup |
         ModeFlags.readOther | ModeFlags.execOther );
-    enforceDir(litPtr!"/sys",
+    enforceDir(litPtr!"/sys".asConst,
         ModeFlags.readUser  | ModeFlags.execUser  |
         ModeFlags.readGroup | ModeFlags.execGroup |
         ModeFlags.readOther | ModeFlags.execOther );
@@ -56,10 +56,10 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
         //       otherwise it will require GC which does not work with betterC
         static immutable mountProcArgs = [
             mountProg,
-            litPtr!"-t", litPtr!"proc",
-            litPtr!"proc",
-            litPtr!"/proc",
-            SentinelPtr!(immutable(char)).nullValue].assumeSentinel;
+            litPtr!"-t".asConst, litPtr!"proc".asConst,
+            litPtr!"proc".asConst,
+            litPtr!"/proc".asConst,
+            SentinelPtr!(const(char)).nullValue].assumeSentinel;
         auto pid = run(mountProg, mountProcArgs.ptr.withConstPtr,
             SentinelPtr!cstring.nullValue);
         waitEnforceSuccess(pid);
