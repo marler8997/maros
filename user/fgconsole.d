@@ -2,7 +2,8 @@ import mar.conv : tryTo;
 import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.filesys : getcwd;
-import mar.file : stdout, open, close, OpenFlags, OpenAccess, OpenCreateFlags;
+import mar.file : open, close, OpenFlags, OpenAccess, OpenCreateFlags;
+import mar.io : stdout;
 import mar.linux.ioctl;
 import mar.linux.vt;
 

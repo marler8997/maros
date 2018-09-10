@@ -9,8 +9,9 @@ import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.c : cstring, tempCString;
 import mar.mem : malloc, free;
 import mar.print : formatHex, sprintMallocNoSentinel, sprintMallocSentinel;
-import mar.file : FileD, open, openat, close, read, stdout, lseek, isDir, fstatat, formatMode,
+import mar.file : FileD, open, openat, close, read, lseek, isDir, fstatat, formatMode,
                    stat_t, ModeFlags, OpenFlags, OpenAccess, OpenCreateFlags, SeekFrom;
+import mar.io : stdout;
 import mar.filesys : umask, mkdir, rmdir, umount2,
                       linux_dirent, getdents, LinuxDirentRange,
                       AT_SYMLINK_NOFOLLOW;

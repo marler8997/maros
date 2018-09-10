@@ -4,6 +4,7 @@ import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.print : formatHex, sprint;
 import mar.ctypes : mode_t;
 import mar.c : cstring;
+import mar.io;
 // todo: don't import file, instead use logFunctions
 import mar.linux.file;
 import mar.linux.filesys;
@@ -29,7 +30,7 @@ __gshared SentinelArray!cstring envForChildren;
 
 extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring parentEnvp)
 {
-    stdout.write("init process started with ", argc, " arguments:\n");
+    stdout.writeln("init process started with ", argc, " arguments:");
     dumpProgramInput(argv, parentEnvp);
 
     // Setup Environment
@@ -39,7 +40,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring par
         if (pathEnv.isNull)
         {
             enum DefaultPath = "PATH=/sbin";
-            stdout.write("adding env \"", DefaultPath, "\"\n");
+            stdout.writeln("adding env \"", DefaultPath, "\"");
             auto size = cstring.sizeof * (envForChildren.length + 2);
             auto newEnvp = cast(cstring*)malloc(size);
             if (newEnvp is null)

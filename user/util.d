@@ -2,7 +2,7 @@ module util;
 
 void dumpProgramInput(T,U)(T argv, U envp)
 {
-    import mar.file : stderr, stdout;
+    import mar.io : stderr, stdout;
 
 /*
     {

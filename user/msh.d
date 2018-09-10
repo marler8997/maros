@@ -3,8 +3,8 @@ import mar.array : aequals, acopy, amove;
 import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.mem : malloc, tryRealloc;
-static import mar.linux.file;
 import mar.linux.file : FileD, open, OpenFlags, OpenAccess, read;
+static import mar.linux.io;
 import mar.input : LineReader, DefaultFileLineReaderHooks;
 import mar.env : getenv;
 import mar.findprog;
@@ -48,7 +48,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
     FileD inFile;
     if (argc == 0)
     {
-        inFile = mar.linux.file.stdin;
+        inFile = mar.linux.io.stdin;
     }
     else if (argc == 1)
     {
@@ -80,7 +80,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
     {
         if (interactiveMode)
         {
-            import mar.file : stdout;
+            import mar.io : stdout;
             stdout.write(lastExitCode, "> ");
         }
         runNextCommands(inFile);
@@ -149,7 +149,7 @@ void runNextCommands(FileD inFile)
         assert(nextLineStart == 0, "code bug");
         assert(inDataLimit < inBuffer.length, "code bug");
         {
-            //import mar.file; stdout.write("[DEBUG] read...\n");
+            //import mar.io; stdout.write("[DEBUG] read...\n");
             auto result = read(inFile, inBuffer[inDataLimit.. $]);
             if (result.numval <= 0)
             {
@@ -222,7 +222,7 @@ void handleCommand(SentinelArray!char lineArray)
             __tempBuffer.ptr : null;
     }
 
-    //import mar.file; stdout.write("[DEBUG] handleCommand: ", lineArray, "\n");
+    //import mar.io; stdout.write("[DEBUG] handleCommand: ", lineArray, "\n");
 
     auto linePtr = lineArray.ptr;
     for (;; linePtr++)
@@ -245,7 +245,7 @@ void handleCommand(SentinelArray!char lineArray)
             auto cmd = peel(&next);
             if (cmd.length == 0)
                 break;
-            //import mar.file; stdout.write("[DEBUG] arg '", cmd, "'\n");
+            //import mar.io; stdout.write("[DEBUG] arg '", cmd, "'\n");
             argc++;
         }
     }
@@ -253,7 +253,7 @@ void handleCommand(SentinelArray!char lineArray)
     {
         return; // empty line
     }
-    //import mar.file; stdout.write("[DEBUG] got ", argc, " args\n");
+    //import mar.io; stdout.write("[DEBUG] got ", argc, " args\n");
 
     auto argv = cast(cstring*)allocStub(cstring.sizeof * (argc + 1));
     if (argv is null)

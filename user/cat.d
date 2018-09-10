@@ -1,6 +1,7 @@
 import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
-import mar.file : FileD, stdin, stdout, open, close, write, OpenFlags, OpenAccess, read;
+import mar.file : FileD, open, close, write, OpenFlags, OpenAccess, read;
+import mar.io : stdout, stdin;
 import mar.process : exit;
 
 import log;

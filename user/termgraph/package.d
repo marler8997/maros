@@ -5,9 +5,9 @@ import mar.flag;
 import mar.sentinel : assumeSentinel;
 import mar.c : cstring;
 import mar.print : sprint;
-import mar.file : open, OpenFlags, OpenAccess, tryGetFileSize, write, stdout, stderr;
+import mar.file : open, OpenFlags, OpenAccess, tryGetFileSize, write;
+import mar.io : stdout, stderr;
 import mar.mmap : MemoryMap, createMemoryMap;
-import mar.process : exit;
 
 import log;
 
@@ -25,6 +25,9 @@ struct TermCaps
 {
 }
 
+version (NoExit) { } else
+{
+
 auto loadTermCaps(cstring term)
 {
     // TODO: don't use a static size
@@ -34,10 +37,12 @@ auto loadTermCaps(cstring term)
 }
 auto loadTermCapsFile(cstring termfile)
 {
+    import mar.process : exit;
+
     auto fileSize = tryGetFileSize(termfile);
     if (fileSize.failed)
     {
-        stderr.write("WARNING: failed to get size for \"", termfile, "\", returned ", fileSize.errorCode, "\n");
+        stderr.writeln("WARNING: failed to get size for \"", termfile, "\", returned ", fileSize.errorCode);
         return TermCapsFile();
         //logError("failed to get size for \"", termfile, "\", returned ", fileSize.errorCode);
         //exit(1);
@@ -61,6 +66,8 @@ auto loadTermCapsFile(cstring termfile)
         termcapsFile.text.ptr + termcapsFile.text.length, 1, termfile);
     parser.parse();
     return termcapsFile;
+}
+
 }
 
 struct TermCapsParser

@@ -14,8 +14,9 @@ import mar.array : acopy, aequals, endsWith;
 import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.print : sprint, sprintMallocSentinel, formatHex;
-import mar.file : stdout, open, close, read, isDir, fileExists, lseek,
+import mar.file : open, close, read, isDir, fileExists, lseek,
     OpenFlags, OpenAccess, OpenCreateFlags, ModeFlags, SeekFrom;
+import mar.io : stdout;
 import mar.filesys : mkdir, rmdir, chdir, link, chroot, mount, umount2, MS_BIND;
 import mar.mem : malloc, free;
 import mar.env : getenv;

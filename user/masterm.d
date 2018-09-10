@@ -3,7 +3,8 @@ import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.print : formatHex;
 import mar.cmdopt;
-import mar.file : stdin, stdout, read;
+import mar.file : read;
+import mar.io : stdin, stdout;
 import mar.process : exit;
 import mar.env : getenv;
 import mar.linux.signals;// : SIGWINCH, sigaction_t, sigaction;
@@ -18,12 +19,12 @@ mixin(startMixin);
 void logDev(T...)(T args)
 {
     import mar.file;
-    stdout.write("[DEV] ", args, "\n");
+    stdout.writeln("[DEV] ", args);
 }
 
 void usage()
 {
-    import mar.file : stdout;
+    import mar.io : stdout;
     stdout.write("Usage: masterm [-options]\n");
     stdout.write("Options:\n");
     stdout.write("  --term <term>     Use <term> instead of the TERM environment variable\n");
@@ -123,7 +124,6 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
         }
     }
     stdout.write("window size: ", winSize.width, "x", winSize.height, "\n");
-
 
     for (;;)
     {

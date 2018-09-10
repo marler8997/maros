@@ -52,13 +52,13 @@ import compile;
 
 void log(T...)(T args)
 {
-    import mar.file;
-    stdout.write("[BUILD] ", args, "\n");
+    import mar.io;
+    stdout.writeln("[BUILD] ", args);
 }
 void logError(T...)(T args)
 {
-    import mar.file;
-    stdout.write("Error: ", args, "\n");
+    import mar.io;
+    stdout.writeln("Error: ", args);
 }
 
 enum DefaultDirMode = S_IRWXU | S_IRWXG | S_IROTH;
@@ -675,11 +675,13 @@ struct CommandLineTool
 {
     string name;
     bool setRootSuid;
+    string[] versions;
     uint caps;
-    this(string name, Flag!"setRootSuid" setRootSuid = No.setRootSuid, uint caps = 0)
+    this(string name, Flag!"setRootSuid" setRootSuid = No.setRootSuid, string[] versions = null, uint caps = 0)
     {
         this.name = name;
         this.setRootSuid = setRootSuid;
+        this.versions = versions;
         this.caps = caps;
     }
 }
@@ -698,7 +700,8 @@ immutable commandLineTools = [
     CommandLineTool("openvt"),
     CommandLineTool("insmod"),
     CommandLineTool("masterm"),
-    CommandLineTool("rex", No.setRootSuid, CAP_TO_MASK(CAP_SYS_ADMIN) | CAP_TO_MASK(CAP_SYS_CHROOT)),
+    CommandLineTool("medit", No.setRootSuid, ["NoExit"]),
+    CommandLineTool("rex", No.setRootSuid, null, CAP_TO_MASK(CAP_SYS_ADMIN) | CAP_TO_MASK(CAP_SYS_CHROOT)),
     CommandLineTool("rexrootops", Yes.setRootSuid),
 ];
 
@@ -843,7 +846,7 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
     logMkdir(sbinPath);
     logMkdir(objPath);
 
-    const druntimePath = "druntime";
+    const druntimePath = "mar/druntime";
     const marlibPath = "mar/src";
 
     const includePaths = [
@@ -885,7 +888,15 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
 
         if (needsBuild)
         {
-            run(compiler ~ CompilerArgs()
+            auto compilerArgs = CompilerArgs();
+            if (tool.versions)
+            {
+                foreach (version_; tool.versions)
+                {
+                    compilerArgs.version_(version_);
+                }
+            }
+            run(compiler ~ compilerArgs
                 .includeImports("object") // include the 'object' module
                 .includeImports(".")      // include by default
                 .noLink

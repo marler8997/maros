@@ -3,7 +3,8 @@ import mar.array : aequals;
 import mar.sentinel : SentinelPtr, assumeSentinel, lit;
 import mar.c : cstring;
 import mar.process : exit;
-import mar.linux.file : stdout, open, close, OpenFlags, OpenAccess, OpenCreateFlags;
+import mar.linux.file : open, close, OpenFlags, OpenAccess, OpenCreateFlags;
+import mar.io : stdout;
 import mar.linux.filesys : mount, linux_dirent, getdents, LinuxDirentRange;
 import mar.cmdopt;
 

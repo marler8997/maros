@@ -3,8 +3,9 @@ import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.print : formatHex;
 import mar.filesys : linux_dirent, getdents, LinuxDirentRange;
-import mar.file : FileD, stdout, stderr, open, close, OpenFlags, OpenAccess, OpenCreateFlags,
+import mar.file : FileD, open, close, OpenFlags, OpenAccess, OpenCreateFlags,
                    stat_t, fstatat, formatMode, AT_SYMLINK_NOFOLLOW, isLink, readlinkat;
+import mar.io : stdout, stderr;
 import mar.process : exit;
 
 import log;

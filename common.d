@@ -100,7 +100,7 @@ else static assert(0, "environ pointer for this platform not implemented");
 
 void run(ProcBuilder procBuilder)
 {
-    import mar.file : stdout, stderr;
+    import mar.io : stdout, stderr;
     import mar.process : exit, wait;
     stdout.write("[RUN] ", procBuilder, "\n");
     stdout.write("--------------------------------------------------------------------------------\n");
