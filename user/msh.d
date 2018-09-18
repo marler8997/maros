@@ -95,6 +95,7 @@ __gshared size_t inDataLimit;
 void increaseBufferSize(size_t newSize)
 in { assert(nextLineStart == 0, "codebuf"); } do
 {
+    // TODO: probably should call reallocOrSave instead
     char *newBuffer;
     if (tryRealloc(inBuffer.ptr, newSize))
         newBuffer = inBuffer.ptr;

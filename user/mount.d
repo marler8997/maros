@@ -23,6 +23,7 @@ void usage()
 extern (C) int main(uint argc, SentinelPtr!(SentinelPtr!char) argv, SentinelPtr!(SentinelPtr!char) envp)
 {
     SentinelPtr!char fstypes;
+    SentinelPtr!char optionString;
     bool allowNonEmptyTarget = false;
 
     argc--;
@@ -37,6 +38,8 @@ extern (C) int main(uint argc, SentinelPtr!(SentinelPtr!char) argv, SentinelPtr!
                 argv[argc++] = arg;
             else if (aequals(arg, lit!"-t"))
                 fstypes = getOptArg(argv, &i);
+            else if (aequals(arg, lit!"-o"))
+                optionString = getOptArg(argv, &i);
             else if (aequals(arg, lit!"--allow-non-empty-target"))
                 allowNonEmptyTarget = true;
             else
@@ -69,7 +72,7 @@ extern (C) int main(uint argc, SentinelPtr!(SentinelPtr!char) argv, SentinelPtr!
     foreach (type; FsTypeIteratorDestructive(fstypes))
     {
         //stdout.write("fstype \"", type, "\"\n");
-        auto result = tryMount(source, target, type);
+        auto result = tryMount(source, target, type, optionString);
         if (result == Yes.passed)
         {
             //stdout.write("[DEBUG] mount was success!\n");
@@ -80,9 +83,9 @@ extern (C) int main(uint argc, SentinelPtr!(SentinelPtr!char) argv, SentinelPtr!
     return 1;
 }
 
-Flag!"passed" tryMount(cstring source, cstring target, cstring type)
+Flag!"passed" tryMount(cstring source, cstring target, cstring type, cstring optionString)
 {
-    auto result = mount(source, target, type, 0, null);
+    auto result = mount(source, target, type, 0, optionString.raw);
     if (result.passed)
         return Yes.passed;
     logError("failed to mount as type \"", type, "\", mount returned ", result.numval);

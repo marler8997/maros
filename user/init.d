@@ -39,7 +39,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring par
         auto pathEnv = getenv(envForChildren.ptr, "PATH");
         if (pathEnv.isNull)
         {
-            enum DefaultPath = "PATH=/sbin";
+            enum DefaultPath = "PATH=/sbin:/bin:/usr/bin";
             stdout.writeln("adding env \"", DefaultPath, "\"");
             auto size = cstring.sizeof * (envForChildren.length + 2);
             auto newEnvp = cast(cstring*)malloc(size);
@@ -129,6 +129,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring par
             // Note: have to assign the array literal to a static variable
             //       otherwise it will require GC which does not work with betterC
             static immutable shellProg = litPtr!"/sbin/msh";
+            //static immutable shellProg = litPtr!"/bin/bash";
             static immutable shellArgs = [
             shellProg,
             SentinelPtr!(immutable(char)).nullValue].assumeSentinel;
@@ -166,7 +167,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring par
                 logError("fork failed, returned ", shellPid.numval);
                 exit(1);
             }
-            stdout.write("started shell, pid=", shellPid.val, "\n");
+            stdout.write("started ", shellProg, ", pid=", shellPid.val, "\n");
             chvt(ttyControlFd, vtNum);
             close(ttyControlFd);
         }

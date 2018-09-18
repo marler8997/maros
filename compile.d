@@ -147,10 +147,10 @@ BuildSource[] tryGetBuildFiles(SentinelString jsonFilename, const string mainSou
     import std.algorithm : canFind;
     import std.stdio : writefln;
     import mar.flag;
+    import mar.enforce;
     import mar.c : tempCString;
     import mar.json;
     import mar.file : getFileSize;
-    import mar.process : exit;
     import common : MappedFile;
 
     //mixin tempCString!("jsonFilename", "jsonFilenameString", "0");
@@ -188,7 +188,7 @@ BuildSource[] tryGetBuildFiles(SentinelString jsonFilename, const string mainSou
                         {
                             writefln("   include dir '%s'", dir);
                         }
-                        exit(1);
+                        enforce(false);
                     }
                     includeDir = includePaths[i];
                     if (file.startsWith(includeDir))

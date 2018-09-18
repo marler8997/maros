@@ -1,17 +1,11 @@
 module common;
 
+import mar.passfail;
+import mar.flag;
+import mar.enforce;
 import mar.process : ProcBuilder;
-
-void enforce(T)(T cond, lazy string msg)
-{
-    import std.stdio : writeln;
-    import mar.process : exit;
-    if (!cond)
-    {
-        writeln("Error: ", msg);
-        exit(1);
-    }
-}
+import mar.linux.cthunk : mode_t;
+import mar.linux.file.perm;
 
 auto tryExec(string command, string filter = null)
 {
@@ -74,7 +68,6 @@ void run(string command)
 {
     import std.stdio;
     import std.process : spawnShell, wait;
-    import mar.process : exit;
     writeln("[RUN] ", command);
     writeln("--------------------------------------------------------------------------------");
     //
@@ -83,11 +76,7 @@ void run(string command)
     auto pid = spawnShell(command);
     auto result = wait(pid);
     writeln("--------------------------------------------------------------------------------");
-    if (result != 0)
-    {
-        writefln("Error: last command exited with %s", result);
-        exit(1);
-    }
+    enforce(result == 0, "last command exited with ", result);
 }
 
 version (Posix)
@@ -98,29 +87,73 @@ version (Posix)
 }
 else static assert(0, "environ pointer for this platform not implemented");
 
+void printRun(ProcBuilder procBuilder)
+{
+    import mar.io : stdout;
+    stdout.writeln("[RUN] ", procBuilder);
+}
+
 void run(ProcBuilder procBuilder)
 {
-    import mar.io : stdout, stderr;
-    import mar.process : exit, wait;
-    stdout.write("[RUN] ", procBuilder, "\n");
-    stdout.write("--------------------------------------------------------------------------------\n");
+    import mar.io;
+    import mar.process : wait;
+
+    printRun(procBuilder);
+    stdout.writeln("--------------------------------------------------------------------------------");
     auto proc = procBuilder.startWithClean(environ);
-    if (proc.failed)
-    {
-        stderr.write("Error: failed to start process: ", proc, "\n");
-        exit(1);
-    }
+    enforce(proc, "failed to start process: ", Result.val);
     auto result = wait(proc.val);
-    if (result.failed)
+    enforce(result, "failed to wait for process, returned ", Result.val);
+    enforce(result.val == 0, "last command exited with ", result.val);
+}
+
+char[] runGetStdout(ProcBuilder procBuilder, Flag!"printStdoutOnError" printStdoutOnError)
+{
+    import mar.sentinel : assumeSentinel;
+    import mar.file : pipe, PipeFds, dup2, close;
+    import mar.input : readAllMalloc;
+    import mar.io : stdout;
+    import mar.linux.process : fork, execve, wait;
+
+    PipeFds pipeFds;
+    pipe(&pipeFds)
+        .enforce("pipe failed, returned ", Result.val);
+    //stdout.writeln("[DEBUG] Pipe: read=", pipeFds.read, ", write=", pipeFds.write);
+
+    printRun(procBuilder);
+    procBuilder.tryPut(cstring.nullValue).enforce;
+    auto pidResult = fork();
+    if (pidResult.val == 0)
     {
-        stderr.write("Error: failed to wait for process: ", result, "\n");
-        exit(1);
+        {
+            auto result = dup2(pipeFds.write, stdout);
+            enforce(result == stdout, "dup2 failed, returned ", result);
+        }
+        close(pipeFds.read);
+        close(pipeFds.write);
+        auto result = execve(procBuilder.args.data[0], procBuilder.args.data.ptr.assumeSentinel, environ);
+        // TODO: how do we handle this error in the new process?
+        //exit( (result.numval == 0) ? 1 : result.numval);
+        enforce(false, "execve failed");
     }
+
+    procBuilder.free();
+    pidResult.enforce("fork failed, returned ", Result.val);
+    close(pipeFds.write);
+    auto output = readAllMalloc(pipeFds.read, 4096);
+    close(pipeFds.read);
+
+    auto result = wait(pidResult.val);
+    enforce(result, "wait failed, returned ", Result.val);
     if (result.val != 0)
     {
-        stderr.write("Error: last command exited with ", result.val, "\n");
-        exit(1);
+        if (printStdoutOnError)
+        {
+            stdout.write(output.val);
+        }
+        enforce(0, "last command exited with ", result.val);
     }
+    return output.val;
 }
 
 alias formatFile = formatQuotedIfSpaces;
@@ -173,14 +206,15 @@ string sourceRelativeShortPath(string fileFullPath = dirName(__FILE_FULL_PATH__)
 */
 string shortPath(string path, string base)
 {
+    //import mar.io;stdout.writeln("[DEBUG] shortPath: path '", path, "' base '", base, "'");
     import std.path;
-    if (!path.isAbsolute)
-        path = buildNormalizedPath(base, path);
-    else
-        path = buildNormalizedPath(path);
+    if (path.isAbsolute)
+        return buildNormalizedPath(path);
 
-    const abs = absolutePath(path);
-    const rel = relativePath(path);
+    path = buildNormalizedPath(base, path);
+
+    const abs = buildNormalizedPath(absolutePath(path));
+    const rel = buildNormalizedPath(relativePath(path));
     return (rel.length < abs.length) ? rel : abs;
 }
 
@@ -199,7 +233,7 @@ static struct MappedFile
     }
     else version (Windows)
     {
-    
+
     }
 
     private FileD fd;
@@ -227,4 +261,108 @@ static struct MappedFile
             this.fd.setInvalid();
         }
     }
+}
+
+passfail mkdirIfDoesNotExist(const(char)[] dir, mode_t mode = S_IRWXU | S_IRWXG | (S_IROTH | S_IXOTH))
+{
+    import mar.c : tempCString;
+    import mar.file : isDir;
+    import mar.io;
+    import mar.filesys : mkdir;
+
+    mixin tempCString!("dirCStr", "dir");
+    if (!isDir(dirCStr.str))
+    {
+        stdout.writeln("mkdir '", dir, "'");
+        auto result = mkdir(dirCStr.str, mode);
+        if (result.failed)
+        {
+            stderr.writeln("mkdir '", dir, "' failed, returned ", result.numval);
+            return passfail.fail;
+        }
+    }
+    // TODO: should we check that the mode is correct?
+    return passfail.pass;
+}
+
+auto trimFront(inout(char)[] str, char trimChar)
+{
+    size_t offset = 0;
+    for (; offset < str.length && str[offset] == trimChar; offset++)
+    { }
+    return str[offset .. $];
+}
+auto trimBack(inout(char)[] str, char trimChar)
+{
+    size_t offset = str.length;
+    for(; offset > 0;)
+    {
+        offset--;
+        if (str[offset] != trimChar)
+        {
+            offset++;
+            break;
+        }
+    }
+    return str[0 .. offset];
+}
+auto trimBoth(inout(char)[] str, char trimChar)
+{
+    return str.trimFront(trimChar).trimBack(trimChar);
+}
+
+passfail installFile(const(char)[] file, const(char)[] targetRoot, const(char)[] targetOverride)
+{
+    import mar.qual;
+    import mar.mem : free;
+    import mar.print : sprintMallocNoSentinel;
+    import mar.path : baseName;
+
+    targetRoot = targetRoot.trimBack('/');
+
+    char[] targetFile;
+    if (targetOverride.length == 0)
+    {
+        auto fileTrimmedRoot = file.trimFront('/');
+        targetFile = sprintMallocNoSentinel(targetRoot, '/', fileTrimmedRoot);
+    }
+    else
+    {
+        if (targetOverride[$ - 1] == '/')
+            targetFile = sprintMallocNoSentinel(targetRoot, '/', targetOverride.trimFront('/'), baseName(file));
+        else
+            targetFile = sprintMallocNoSentinel(targetRoot, '/', targetOverride.trimFront('/'));
+    }
+    auto result = installFile(file, targetFile, targetRoot.length + 1);
+    free(targetFile.ptr);
+    return result;
+}
+
+passfail installFile(const(char)[] source, const(char)[] dest, size_t mkdirStartIndex)
+{
+    import mar.print : sprintMallocSentinel;
+    import mar.path : SubPathIterator, dirName;
+
+    foreach (dir; SubPathIterator(dirName(dest), mkdirStartIndex))
+    {
+        //stdout.writeln("[DEBUG] SubPath '", dir, "'");
+        auto result = mkdirIfDoesNotExist(dir);
+        if (result.failed)
+            return passfail.fail;
+    }
+
+    // TODO: this is just a quick hack to get it working
+    //       mar should create a copy function
+    import std.file : exists;
+    if (exists(dest))
+    {
+        import mar.io;
+        stdout.writeln("already installed '", dest, "'");
+    }
+    else
+    {
+        import std.format : format;
+        run(format("cp %s %s", source, dest));
+    }
+    return passfail.pass;
 }

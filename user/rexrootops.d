@@ -4,13 +4,14 @@ This tool contains all the operations that the rex program must do as root.
 For example, only the root user can create the /var/rex directory, however,
 we don't want to have to run the full rex program as root.
 */
-import mar.array : aequals, indexOf, find, amove, startsWith;
+import mar.array : aequals, indexOrMax, find, amove, startsWith;
 import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.c : cstring, tempCString;
 import mar.mem : malloc, free;
 import mar.print : formatHex, sprintMallocNoSentinel, sprintMallocSentinel;
 import mar.file : FileD, open, openat, close, read, lseek, isDir, fstatat, formatMode,
                    stat_t, ModeFlags, OpenFlags, OpenAccess, OpenCreateFlags, SeekFrom;
+static import mar.file.perm;
 import mar.io : stdout;
 import mar.filesys : umask, mkdir, rmdir, umount2,
                       linux_dirent, getdents, LinuxDirentRange,
@@ -202,12 +203,12 @@ uint doUnmounts()
 
 auto getMountPoint(inout(char)[] line)
 {
-    auto spaceIndex = line.indexOf(' ');
-    if (spaceIndex == line.length)
+    auto spaceIndex = line.indexOrMax(' ');
+    if (spaceIndex == spaceIndex.max)
         return null;
     line = line[spaceIndex + 1 .. $];
-    spaceIndex = line.indexOf(' ');
-    if (spaceIndex == line.length)
+    spaceIndex = line.indexOrMax(' ');
+    if (spaceIndex == spaceIndex.max)
         return null;
     return line[0 .. spaceIndex];
 }
@@ -350,7 +351,7 @@ uint cleanDirEntries(SentinelArray!(const(char)) dirName, FileD dirFd,
         stdout.write("  nlink=", status.st_nlink, "\n");
         stdout.write("  uid=", status.st_uid, ", gid=", status.st_gid, "\n");
         */
-        if (status.st_mode.isDir)
+        if (mar.file.perm.isDir(status.st_mode))
         {
             auto subdirName = sprintMallocSentinel(dirName, '/', entry.nameCString);
             if (subdirName.isNull)

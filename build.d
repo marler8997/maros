@@ -1,5 +1,8 @@
 #!/usr/bin/env rund
 //!importPath mar/src
+//!debug
+//!debugSymbols
+//!version NoExit
 
 import core.stdc.errno;
 import core.stdc.stdlib : exit, alloca;
@@ -11,15 +14,15 @@ import std.conv : to, ConvException;
 import std.format : format, formattedWrite;
 import std.algorithm : skipOver, canFind, map;
 import std.datetime : SysTime;
-import std.path : dirName, isAbsolute, absolutePath;
+import std.path : isAbsolute, absolutePath, buildNormalizedPath;
 import std.file : exists, readText, rmdir, timeLastModified;
 import std.process : executeShell, environment;
-import std.getopt;
 
 import mar.flag;
+import mar.enforce;
 import mar.endian;
 import mar.array : acopy;
-import mar.sentinel : makeSentinel, verifySentinel, lit;
+import mar.sentinel : SentinelArray, makeSentinel, verifySentinel, lit;
 import mar.print : formatHex, sprintMallocSentinel;
 import mar.c;
 import mar.ctypes : off_t, mode_t;
@@ -40,8 +43,10 @@ import mar.file : getFileSize, tryGetFileMode, fileExists, open, close,
     S_IRUSR,
     S_IRWXU;
 import mar.filesys : mkdir;
-import mar.findprog : findProgram;
+static import mar.path;
+import mar.findprog : findProgram, usePath;
 import mar.process : ProcBuilder;
+import mar.cmdopt;
 import mbr = mar.disk.mbr;
 // TODO: replace this linux-specific import
 //import mar.linux.file : open, close;
@@ -49,6 +54,7 @@ import mar.linux.capability : CAP_TO_MASK, CAP_SYS_ADMIN, CAP_SYS_CHROOT;
 
 import common;
 import compile;
+import elf;
 
 void log(T...)(T args)
 {
@@ -84,12 +90,10 @@ immutable commandLists = [
         "Some Generic Utility Commands"),
 ];
 
-/*
-string sourceRelativeShortPath(string path)
+string marosRelativeShortPath(string path)
 {
-    return shortPath(path, __FILE_FULL_PATH__.dirName);
+    return shortPath(path, mar.path.dirName(__FILE_FULL_PATH__));
 }
-*/
 
 /**
 Makes sure the the directory exists with the given `mode`.  Creates
@@ -133,7 +137,7 @@ void logCopy(From, To)(From from, To to, Flag!"asRoot" asRoot)
 void usage()
 {
     import std.stdio : writeln, writefln;
-    writeln ("build.d [-options] <command>");
+    writeln ("build.d [-C <dir>] <command>");
     foreach (ref commandList; commandLists)
     {
         writeln();
@@ -147,28 +151,39 @@ void usage()
 
 int main(string[] args)
 {
-    import mar.filesys : chdir;
+    try
     {
-        // TODO: do not cd if we are already there
-        auto newDir = __FILE_FULL_PATH__.dirName;
-        log("cd '", newDir, "'");
-        chdir(newDir);
+        return tryMain(args);
+    }
+    catch(EnforceException) { return 1; }
+}
+int tryMain(string[] args)
+{
+    args = args[1 .. $];
+    string configOption;
+    {
+        auto newArgsLength = 0;
+        scope (exit) args = args[0 .. newArgsLength];
+        for (uint i = 0; i < args.length; i++)
+        {
+            auto arg = args[i];
+            if (arg[0] != '-')
+                args[newArgsLength++] = arg;
+            // TODO: implement -C
+            else
+            {
+                logError("unknown option \"", arg, "\"");
+                return 1;
+            }
+        }
+    }
+    if (args.length == 0)
+    {
+        usage();
+        return 1;
     }
 
     import std.stdio;
-
-    {
-        auto result = getopt(args
-//            "kernel-path", "path to linux kernel, default=" ~ defaultKernelPath, &kernelPath
-);
-        args = args[1 .. $];
-        if (result.helpWanted || args.length == 0)
-        {
-            usage();
-            defaultGetoptPrinter(null, result.options);
-            return 1;
-        }
-    }
 
     const commandToInvoke = args[0];
     args = args[1 .. $];
@@ -361,13 +376,11 @@ struct Config
 struct ConfigParser
 {
     string filename;
-    string fileDir;
     string text;
     uint lineNumber;
     this(string filename)
     {
         this.filename = filename;
-        this.fileDir = filename.dirName;
         if (!exists(filename))
         {
             logError("config file '", filename, "' does not exist");
@@ -443,10 +456,10 @@ struct ConfigParser
                 "config file is missing the 'crystalBootloaderKernelReserve' setting");
         }
         */
-        enforce(config.kernelPath       , "config file is missing the 'kernelPath' setting");
-        enforce(config.imageFile        , "config file is missing the 'imageFile' setting");
+        enforce(config.kernelPath !is null, "config file is missing the 'kernelPath' setting");
+        enforce(config.imageFile !is null, "config file is missing the 'imageFile' setting");
         enforce(config.imageSize.nonZero, "config file is missing the 'imageSize' setting");
-        enforce(config.rootfsType       , "config file is missing the 'rootfsPartition' setting");
+        enforce(config.rootfsType !is null, "config file is missing the 'rootfsPartition' setting");
         enforce(config.swapSize.nonZero , "config file is missing the 'swapPartition' setting");
         return config;
     }
@@ -530,7 +543,7 @@ size_t asSizeT(ulong value, lazy string errorPrefix, lazy string errorPostfix)
 bool isDigit(char c) { return c <= '9' && c >= '0'; }
 Config parseConfig()
 {
-    auto parser = ConfigParser("config.txt");
+    auto parser = ConfigParser("maros.config");
     auto config = parser.parse();
     return config;
 }
@@ -581,7 +594,7 @@ string loopImage(ref const Config config)
         log("image file '", config.imageFile, "' is not looped, looping it now");
         exec(format("sudo losetup -f -P %s", config.imageFile.formatFile));
         loopFile = tryGetImageLoopFile(config);
-        enforce(loopFile, "attempted to loop the image but could not find the loop file");
+        enforce(loopFile !is null, "attempted to loop the image but could not find the loop file");
         log("looped image '", config.imageFile, "' to '", loopFile, "'");
     }
     log("Loop Partitions:");
@@ -778,7 +791,7 @@ Command("cloneBootloader", "clone the bootloader", cmdNoFlags, function(string[]
     const config = parseConfig();
 
     auto repo = "crystal";
-    if (exists("crystal"))    
+    if (exists("crystal"))
     {
         log("crystal repo '", repo, "' already exists");
     }
@@ -838,27 +851,27 @@ Command("buildUser", "build userspace of the os", cmdInSequence, function(string
     case Mode.release: compiler ~= " -release -O -inline"; break;
     }
 
-    const userPath   = "user";
+    const userSourcePath   = marosRelativeShortPath("user");
     const rootfsPath = "rootfs";
     const sbinPath   = rootfsPath ~ "/sbin";
-    const objPath  = userPath ~ "/obj";
+    const objPath  = "obj";
     logMkdir(rootfsPath);
     logMkdir(sbinPath);
     logMkdir(objPath);
 
-    const druntimePath = "mar/druntime";
-    const marlibPath = "mar/src";
+    const druntimePath = marosRelativeShortPath("mar/druntime");
+    const marlibPath = marosRelativeShortPath("mar/src");
 
     const includePaths = [
         druntimePath,
         marlibPath,
-        userPath,
+        userSourcePath,
     ];
 
     foreach (ref tool; commandLineTools)
     {
-        const src = userPath ~ "/" ~ tool.name ~ ".d";
-        const toolObjPath  = userPath ~ "/obj/" ~ tool.name;
+        const src = userSourcePath ~ "/" ~ tool.name ~ ".d";
+        const toolObjPath  = "obj/" ~ tool.name;
         logMkdir(toolObjPath);
 
         const binaryFilename = (sbinPath ~ "/" ~ tool.name).makeSentinel;
@@ -1199,7 +1212,7 @@ Command("installRootfs", "install files/programs to rootfs", cmdInSequence, func
         logCopy(exe, targetSbinPath ~ "/" ~ tool.name, Yes.asRoot);
     }
 
-    return 1;
+    return 0;
 }),
 
 ]; // End of diskSetupCommands
@@ -1215,6 +1228,114 @@ Command("status", "try to get the current status of the configured image", cmdNo
     return 1;
 }),
 
+Command("installFile", "Install one of more files <src>[:<dst>] or <src>[:<dir>/]", cmdNoFlags, function(string[] args)
+{
+    if (args.length == 0)
+    {
+        logError("please supply one or more files");
+        return 1;
+    }
+    const config = parseConfig();
+    const mounts = config.getMounts();
+
+    Rootfs.mount(config, mounts);
+    scope (exit) Rootfs.unmount(config, mounts);
+
+    foreach (arg; args)
+    {
+        string file;
+        string destDir;
+        auto colonIndex = arg.indexOf(':');
+        if (colonIndex >= 0)
+        {
+            file = arg[0 .. colonIndex];
+            destDir = arg[colonIndex + 1 .. $];
+        }
+        else
+        {
+            file = arg;
+            destDir = null;
+        }
+        auto result = installFile(file, mounts.rootfs, destDir);
+        if (result.failed)
+            return 1; // fail
+    }
+    return 0;
+}),
+
+Command("installElf", "Install an elf program and it's library dependencies <src>[:<dst>] or <src>[:<dir>/]", cmdNoFlags, function(string[] args)
+{
+    if (args.length == 0)
+    {
+        logError("please supply one or more elf binaries");
+        return 1;
+    }
+
+    bool useLdd = true;
+    string progName = useLdd ? "ldd" : "readelf";
+    auto prog = findProgram(environment.get("PATH").verifySentinel.ptr, progName);
+    if (prog.isNull)
+    {
+        logError("failed to find program '", progName, "'");
+        return 1; // fail
+    }
+
+    const config = parseConfig();
+    const mounts = config.getMounts();
+
+    Rootfs.mount(config, mounts);
+    scope (exit) Rootfs.unmount(config, mounts);
+
+    foreach (arg; args)
+    {
+        SentinelArray!(immutable(char)) elfSourceFile;
+        string elfDestDir;
+        {
+            auto colonIndex = arg.indexOf(':');
+            if (colonIndex >= 0)
+            {
+                elfSourceFile = sprintMallocSentinel(arg[0 .. colonIndex]).asImmutable;
+                elfDestDir = arg[colonIndex + 1 .. $];
+            }
+            else
+            {
+                elfSourceFile = arg.makeSentinel;
+                elfDestDir = null;
+            }
+        }
+
+        if (usePath(elfSourceFile.array))
+        {
+            if (!fileExists(elfSourceFile.ptr))
+            {
+                log("looking for '", elfSourceFile, "'...");
+                auto result = findProgram(environment.get("PATH").verifySentinel.ptr, elfSourceFile.array);
+                if (result.isNull)
+                {
+                    logError("failed to find program '", elfSourceFile, "'");
+                    return 1;
+                }
+                elfSourceFile = result.walkToArray.asImmutable;
+                log("found program at '", elfSourceFile, "'");
+            }
+        }
+
+        if (useLdd)
+        {
+            auto result = installElfWithLdd(prog, elfSourceFile, elfDestDir, mounts.rootfs);
+            if (result.failed)
+                return 1;
+        }
+        else
+        {
+            auto result = installElfWithReadelf(prog, elfSourceFile, elfDestDir, mounts.rootfs);
+            if (result.failed)
+                return 1;
+        }
+    }
+    return 0;
+}),
+
 Command("startQemu", "start the os using qemu", cmdNoFlags, function(string[] args)
 {
     enforce(args.length == 0, "startQemu requires 0 arguments");
@@ -1224,10 +1345,12 @@ Command("startQemu", "start the os using qemu", cmdNoFlags, function(string[] ar
     auto qemuProg = findProgram(environment.get("PATH").verifySentinel.ptr, qemuProgName);
     if (qemuProg.isNull)
     {
-        logError("failed to find qemu program '", qemuProgName, "'");
+        logError("failed to find program '", qemuProgName, "'");
         return 1; // fail
     }
     auto procBuilder = ProcBuilder.forExeFile(qemuProg);
+    procBuilder.tryPut(lit!"-m").enforce;
+    procBuilder.tryPut(lit!"2048").enforce;
     procBuilder.tryPut(lit!"-drive").enforce;
     procBuilder.tryPut(sprintMallocSentinel("format=raw,file=", config.imageFile)).enforce;
 
