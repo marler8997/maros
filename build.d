@@ -306,13 +306,16 @@ struct LoopPartFiles
 // crystal is meant to reside in the first 16 sectors
 // of the disk
 enum CrystalReserveSectorCount = 16;
-enum CrystalReserveSize = CrystalReserveSectorCount * 512;
+enum CrystalReserveByteSize = CrystalReserveSectorCount * 512;
+enum CrystalKernelStartSector = 17;
+enum CrystalKernelStartByteOffset = 17 * 512;
 struct CrystalBootloaderFiles
 {
     string dir;
     string source;
     string list;
     string binary;
+    string script;
 }
 struct Config
 {
@@ -352,7 +355,8 @@ struct Config
             dir,
             dir.appendPath("crystal.asm"),
             dir.appendPath("crystal.list"),
-            dir.appendPath("crystal.bin"));
+            dir.appendPath("crystal.bin"),
+            dir.appendPath("crystal-img"));
     }
     auto mapImage(size_t offset, size_t length, Flag!"writeable" writeable) const
     {
@@ -808,9 +812,9 @@ Command("buildBootloader", "build the bootloader", cmdInSequence, function(strin
     const config = parseConfig();
 
     const files = config.getCrystalBootloaderFiles();
-    run(format("nasm -o %s -l %s -Dcmd_line=\"%s\" %s",
+    run(format("nasm -o %s -l %s %s",
         files.binary.formatFile, files.list.formatFile,
-        config.kernelCommandLine, files.source.formatFile));
+        files.source.formatFile));
 
     return 0;
 }),
@@ -1096,9 +1100,9 @@ Command("installBootloader", "install the bootloader", cmdInSequence, function(s
     mixin tempCString!("binaryTempCStr", "files.binary");
     const bootloaderSize = getFileSize(binaryTempCStr.str).asSizeT("bootloader image size ", " is too big to map");
     log("bootloader file is ", bootloaderSize, " bytes");
-    enforce(bootloaderSize <= CrystalReserveSize,
-        format("bootloader is too large (%s bytes, max is %s bytes)", bootloaderSize, CrystalReserveSize));
-    auto mappedImage = config.mapImage(0, CrystalReserveSize, Yes.writeable);
+    enforce(bootloaderSize <= CrystalReserveByteSize,
+        format("bootloader is too large (%s bytes, max is %s bytes)", bootloaderSize, CrystalReserveByteSize));
+    auto mappedImage = config.mapImage(0, CrystalReserveByteSize, Yes.writeable);
     {
         auto bootloaderImage = MappedFile.openAndMap(binaryTempCStr.str, 0, mbr.BootstrapSize, No.writeable);
         log("copying bootsector code (", mbr.BootstrapSize, " bytes)...");
@@ -1117,13 +1121,28 @@ Command("installBootloader", "install the bootloader", cmdInSequence, function(s
         bootloaderImage.unmapAndClose();
     }
     {
-        const zeroSize = CrystalReserveSize - bootloaderSize;
+        const zeroSize = CrystalReserveByteSize - bootloaderSize;
         log("zeroing the rest of the crystal reserved sectors (", zeroSize, " bytes)...");
         memset(mappedImage.ptr + bootloaderSize, 0, zeroSize);
     }
     mappedImage.unmapAndClose();
 
     log("Succesfully installed the crystal bootloader");
+    return 0;
+}),
+
+Command("installKernelCmd", "install the kernel command line", cmdInSequence, function(string[] args)
+{
+    enforce(args.length == 0, "install requires 0 arguments");
+    const config = parseConfig();
+
+    const files = config.getCrystalBootloaderFiles();
+    enforce(exists(files.script), format(
+        "crystal script '%s' does not exist", files.script));
+
+    run(format("%s set-kernel-cmd-line %s %s",
+        files.script, config.imageFile, config.kernelCommandLine));
+    log("Succesfully installed the kernel command line for crystal to use");
     return 0;
 }),
 
@@ -1147,10 +1166,10 @@ Command("installKernel", "install the kernel to the rootfs", cmdInSequence, func
             .asSizeT("kernel image size ", " is too big to map");
         log("kernel image is \"", kernelPaths.image, "\" is ", kernelImageSize, " bytes");
         auto kernelImageMap = MappedFile.openAndMap(kernelPathTempCStr.str, 0, kernelImageSize, No.writeable);
-        auto diskImageMap = config.mapImage(0, CrystalReserveSize + kernelImageSize, Yes.writeable);
+        auto diskImageMap = config.mapImage(0, CrystalKernelStartByteOffset + kernelImageSize, Yes.writeable);
 
         log("Copying ", kernelImageSize, " bytes from kernel image to disk image...");
-        memcpy(diskImageMap.ptr + CrystalReserveSize, kernelImageMap.ptr, kernelImageSize);
+        memcpy(diskImageMap.ptr + CrystalKernelStartByteOffset, kernelImageMap.ptr, kernelImageSize);
 
         diskImageMap.unmapAndClose();
         kernelImageMap.unmapAndClose();
@@ -1355,7 +1374,7 @@ Command("startQemu", "start the os using qemu", cmdNoFlags, function(string[] ar
     procBuilder.tryPut(sprintMallocSentinel("format=raw,file=", config.imageFile)).enforce;
 
     // optional, enable kvm (TODO: make this an option somehow)
-    procBuilder.tryPut(lit!"--enable-kvm").enforce;
+    //procBuilder.tryPut(lit!"--enable-kvm").enforce;
     {
         enum SerialSetting {default_, stdio, file, telnet }
         const serialSetting = SerialSetting.stdio;
