@@ -95,6 +95,48 @@ string marosRelativeShortPath(string path)
     return shortPath(path, mar.path.dirName(__FILE_FULL_PATH__));
 }
 
+void logSymlink(string linkTarget, string linkFile)
+{
+    import mar.linux.file : stat_t;
+    import mar.linux.filesys : readlink, symlink, unlink;
+    import mar.linux.syscall : sys_lstat;
+
+    mixin tempCString!("linkTargetCStr", "linkTarget");
+    mixin tempCString!("linkFileCStr", "linkFile");
+
+    {
+        stat_t stat = void;
+        const statResult = sys_lstat(linkFileCStr.str, &stat);
+        if (!statResult.failed)
+        {
+            auto currentValue = new char[linkTarget.length];
+            if (readlink(linkFileCStr.str, currentValue).passed)
+            {
+                if (currentValue == linkTarget)
+                {
+                    log("symlink '", linkFile, "' -> '", linkTarget, "' (already exists)");
+                    return;
+                }
+            }
+            const unlinkResult = unlink(linkFileCStr.str);
+            if (unlinkResult.failed)
+            {
+                logError("link '", linkFile, "' already exists with wrong target but could not unlink it: ", unlinkResult);
+                exit(1);
+            }
+        }
+    }
+    {
+        log("symlink '", linkFile, "' -> '", linkTarget, "'");
+        const result = symlink(linkTargetCStr.str, linkFileCStr.str);
+        if (result.failed)
+        {
+            logError("symlink '", linkFile, "' -> '", linkTarget, "' failed: ", result);
+            exit(1);
+        }
+    }
+}
+
 /**
 Makes sure the the directory exists with the given `mode`.  Creates
 it if it does not exist.
@@ -722,6 +764,68 @@ immutable commandLineTools = [
     CommandLineTool("rexrootops", Yes.setRootSuid),
 ];
 
+/**
+Returns: 0 on success
+*/
+int installRootfs(string target, bool forWsl)
+{
+    // create the directory structure
+    logMkdir(target ~ "/dev", S_IRWXU | S_IRWXG | (S_IROTH | S_IXOTH));
+    logMkdir(target ~ "/proc", (S_IRUSR | S_IXUSR) | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
+    logMkdir(target ~ "/sys", (S_IRUSR | S_IXUSR) | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
+    logMkdir(target ~ "/var", S_IRWXU | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
+    logMkdir(target ~ "/tmp", S_IRWXU | S_IRWXG | S_IRWXO);
+    //logMkdir(target ~ "/root", Yes.asRoot); // not sure I need this one
+    if (forWsl)
+    {
+        // the /bin and /etc directories are required for WSL distros
+        logMkdir(target ~ "/bin", S_IRWXU | S_IRWXG | S_IRWXO);
+        logSymlink("/sbin/msh", target ~ "/bin/msh");
+        logMkdir(target ~ "/etc", S_IRWXU | S_IRWXG | S_IRWXO);
+        {
+            auto wslpathFilename = target ~ "/bin/wslpath";
+            mixin tempCString!("wslpathFilenameCStr", "wslpathFilename");
+            auto file = open(wslpathFilenameCStr.str, OpenFlags(OpenAccess.writeOnly, OpenCreateFlags.creat));
+            file.write("/sbin/init");
+            file.close();
+            run("sudo chmod 0777 " ~ wslpathFilename);
+        }
+        {
+            auto passwdFilename = target ~ "/etc/passwd";
+            mixin tempCString!("passwdFilenameCStr", "passwdFilename");
+            auto passwd = open(passwdFilenameCStr.str, OpenFlags(OpenAccess.writeOnly, OpenCreateFlags.creat));
+            passwd.write("root:x:0:0:root:/:/bin/msh\n");
+            passwd.close();
+            run("sudo chmod 0777 " ~ passwdFilename);
+        }
+    }
+
+/*
+    // used for the terminfo capability database
+    {
+        const targetTerminfo = target ~ "/terminfo";
+        const sourceTerminfo = "terminfo";
+        logMkdir(targetTerminfo, S_IRWXU | S_IRWXG | S_IROTH);
+        exec(format("cp %s/* %s", sourceTerminfo, targetTerminfo));
+    }
+*/
+    const targetSbinPath = target ~ "/sbin";
+    logMkdir(targetSbinPath, S_IRWXU | S_IRWXG | S_IRWXO);
+
+    const sourcePath = "rootfs";
+    const sourceSbinPath = sourcePath ~ "/sbin";
+    foreach (ref tool; commandLineTools)
+    {
+        const exe = sourceSbinPath ~ "/" ~ tool.name;
+        if (!exists(exe))
+        {
+            logError("cannot find '", exe, "', have you run 'buildUser'?");
+            return 1; // fail
+        }
+        logCopy(exe, targetSbinPath ~ "/" ~ tool.name, Yes.asRoot);
+    }
+    return 0; // success
+}
 
 enum CommandFlags
 {
@@ -748,7 +852,6 @@ struct Command
         return (flags & CommandFlags.optional) != 0;
     }
 }
-
 
 // =============================================================================
 // Build Commands
@@ -1198,40 +1301,7 @@ Command("installRootfs", "install files/programs to rootfs", cmdInSequence, func
     Rootfs.mount(config, mounts);
     scope(exit) Rootfs.unmount(config, mounts);
 
-    // create the directory structure
-    logMkdir(mounts.rootfs ~ "/dev", S_IRWXU | S_IRWXG | (S_IROTH | S_IXOTH));
-    logMkdir(mounts.rootfs ~ "/proc", (S_IRUSR | S_IXUSR) | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
-    logMkdir(mounts.rootfs ~ "/sys", (S_IRUSR | S_IXUSR) | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
-    logMkdir(mounts.rootfs ~ "/var", S_IRWXU | (S_IRGRP | S_IXGRP) | (S_IROTH | S_IXOTH));
-    logMkdir(mounts.rootfs ~ "/tmp", S_IRWXU | S_IRWXG | S_IRWXO);
-    //logMkdir(mounts.rootfs ~ "/root", Yes.asRoot); // not sure I need this one
-
-/*
-    // used for the terminfo capability database
-    {
-        const targetTerminfo = mounts.rootfs ~ "/terminfo";
-        const sourceTerminfo = "terminfo";
-        logMkdir(targetTerminfo, S_IRWXU | S_IRWXG | S_IROTH);
-        exec(format("cp %s/* %s", sourceTerminfo, targetTerminfo));
-    }
-*/
-    const targetSbinPath = mounts.rootfs ~ "/sbin";
-    logMkdir(targetSbinPath, S_IRWXU | S_IRWXG | S_IRWXO);
-
-    const sourcePath = "rootfs";
-    const sourceSbinPath = sourcePath ~ "/sbin";
-    foreach (ref tool; commandLineTools)
-    {
-        const exe = sourceSbinPath ~ "/" ~ tool.name;
-        if (!exists(exe))
-        {
-            logError("cannot find '", exe, "', have you run 'buildUser'?");
-            return 1;
-        }
-        logCopy(exe, targetSbinPath ~ "/" ~ tool.name, Yes.asRoot);
-    }
-
-    return 0;
+    return installRootfs(mounts.rootfs, false);
 }),
 
 ]; // End of diskSetupCommands
@@ -1475,6 +1545,36 @@ Command("unmountRootfs", "unmount the disk image", cmdNoFlags, function(string[]
     const config = parseConfig();
     const mounts = config.getMounts();
     Rootfs.unmount(config, mounts);
+    return 0;
+}),
+
+Command("makeTar", "make the rootfs into a tar file", cmdNoFlags, function(string[] args)
+{
+    bool forWsl = false;
+    string tarFile = null;
+    for (;args.length > 0;)
+    {
+        const arg = args[0];
+        if (arg == "for-wsl")
+        {
+            forWsl = true;
+            args = args[1 .. $];
+        }
+        else
+        {
+            enforce(tarFile is null, format("unknown argument to makeTar '%s'", arg));
+            tarFile = arg;
+            args = args[1 .. $];
+        }
+    }
+    enforce(tarFile !is null, "the makeTar command requires a tarFile be provided on the command-line");
+    const config = parseConfig();
+
+    const tarTempDir = tarFile ~ ".tmp";
+    logMkdir(tarTempDir);
+    installRootfs(tarTempDir, forWsl);
+    run(format("tar --create \"--file=%s\" -C \"%s\" .", tarFile, tarTempDir));
+    run(format("rm -rf \"%s\"", tarTempDir));
     return 0;
 }),
 
