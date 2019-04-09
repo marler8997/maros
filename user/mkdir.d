@@ -2,8 +2,8 @@ import mar.array : aequals;
 import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.file : S_IRWXU, S_IRWXG, S_IRWXO;
-import mar.io : stdout;
-import mar.filesys : mkdir;
+import mar.stdio : stdout;
+import mar.linux.filesys : mkdir;
 
 import log;
 

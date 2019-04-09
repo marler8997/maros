@@ -5,7 +5,7 @@ import mar.print : formatHex;
 import mar.filesys : linux_dirent, getdents, LinuxDirentRange;
 import mar.file : FileD, open, close, OpenFlags, OpenAccess, OpenCreateFlags,
                    stat_t, fstatat, formatMode, AT_SYMLINK_NOFOLLOW, isLink, readlinkat;
-import mar.io : stdout, stderr;
+import mar.stdio : stdout, stderr;
 import mar.process : exit;
 
 import log;

@@ -4,7 +4,7 @@ import mar.c : cstring;
 import mar.print : formatHex;
 import mar.cmdopt;
 import mar.file : read;
-import mar.io : stdin, stdout;
+import mar.stdio : stdin, stdout;
 import mar.process : exit;
 import mar.env : getenv;
 import mar.linux.signals;// : SIGWINCH, sigaction_t, sigaction;
@@ -24,7 +24,7 @@ void logDev(T...)(T args)
 
 void usage()
 {
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     stdout.write("Usage: masterm [-options]\n");
     stdout.write("Options:\n");
     stdout.write("  --term <term>     Use <term> instead of the TERM environment variable\n");

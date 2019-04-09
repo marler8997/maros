@@ -23,7 +23,7 @@ import mar.print : formatHex;
 import ascii = mar.ascii;
 //import mar.cmdopt;
 import mar.file : read;
-import mar.io : stdin;
+import mar.stdio : stdin;
 //import mar.env : getenv;
 import mar.linux.signals : sigaction_t, sigaction, SIGWINCH, SIGINT, SIGHUP, SIGTERM, SIGUSR1;
 import mar.linux.ttyioctl;
@@ -36,13 +36,13 @@ mixin(startMixin);
 
 void logDev(T...)(T args)
 {
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     stdout.writeln("[DEV] ", args);
 }
 
 void usage()
 {
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     stdout.writeln("Usage: medit");
     stdout.writeln("Options:");
     stdout.writeln("  <none yet>");
@@ -249,7 +249,7 @@ enum ImmediateEscapeCodes : char
 size_t processInput(const(char)[] input, InputState* state)
 {
     import mar.file : write;
-    import mar.io : stdout;
+    import mar.stdio : stdout;
 
     //logDev("processInput \"", ascii.formatEscape(input), "\"");
 
@@ -335,7 +335,7 @@ struct Terminal
     static passfail setup()
     {
         {
-            import mar.io : stdout;
+            import mar.stdio : stdout;
             termios ios;
             {
                 auto result = tcgetattr(stdout, &ios);
@@ -451,7 +451,7 @@ passfail registerSignals()
 
 auto clearScreen()
 {
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     import mar.file : write;
     return write(stdout, "\x1b[2J");
 }

@@ -42,7 +42,7 @@ import mar.file : getFileSize, tryGetFileMode, fileExists, open, close,
     S_IWUSR,
     S_IRUSR,
     S_IRWXU;
-import mar.filesys : mkdir;
+import mar.linux.filesys : mkdir;
 static import mar.path;
 import mar.findprog : findProgram, usePath;
 import mar.process : ProcBuilder;
@@ -58,12 +58,12 @@ import elf;
 
 void log(T...)(T args)
 {
-    import mar.io;
+    import mar.stdio;
     stdout.writeln("[BUILD] ", args);
 }
 void logError(T...)(T args)
 {
-    import mar.io;
+    import mar.stdio;
     stdout.writeln("Error: ", args);
 }
 

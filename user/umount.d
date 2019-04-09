@@ -2,7 +2,7 @@ import mar.flag;
 import mar.array : aequals;
 import mar.sentinel : SentinelPtr, assumeSentinel, lit;
 import mar.c : cstring;
-import mar.io : stdout;
+import mar.stdio : stdout;
 import mar.linux.filesys : umount2;
 import mar.cmdopt;
 

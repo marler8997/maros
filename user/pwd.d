@@ -2,7 +2,7 @@ import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.print : formatHex;
 import mar.filesys : getcwd;
-import mar.io : stdout;
+import mar.stdio : stdout;
 
 import log;
 

@@ -11,7 +11,7 @@ import mar.sentinel;
 import mar.c;
 import mar.print;
 import mar.file : pipe, PipeFds, fileExists;
-import mar.io;
+import mar.stdio;
 import mar.process : ProcBuilder;
 
 import common;

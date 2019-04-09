@@ -6,7 +6,7 @@ import mar.sentinel : assumeSentinel;
 import mar.c : cstring;
 import mar.print : sprint;
 import mar.file : open, OpenFlags, OpenAccess, tryGetFileSize, write;
-import mar.io : stdout, stderr;
+import mar.stdio : stdout, stderr;
 import mar.mmap : MemoryMap, createMemoryMap;
 
 import log;

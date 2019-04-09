@@ -4,7 +4,7 @@ import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.print : formatHex, sprint;
 import mar.ctypes : mode_t;
 import mar.c : cstring;
-import mar.io;
+import mar.stdio;
 // todo: don't import file, instead use logFunctions
 import mar.linux.file;
 import mar.linux.filesys;

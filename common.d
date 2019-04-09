@@ -89,13 +89,13 @@ else static assert(0, "environ pointer for this platform not implemented");
 
 void printRun(ProcBuilder procBuilder)
 {
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     stdout.writeln("[RUN] ", procBuilder);
 }
 
 void run(ProcBuilder procBuilder)
 {
-    import mar.io;
+    import mar.stdio;
     import mar.process : wait;
 
     printRun(procBuilder);
@@ -112,7 +112,7 @@ char[] runGetStdout(ProcBuilder procBuilder, Flag!"printStdoutOnError" printStdo
     import mar.sentinel : assumeSentinel;
     import mar.file : pipe, PipeFds, dup2, close;
     import mar.input : readAllMalloc;
-    import mar.io : stdout;
+    import mar.stdio : stdout;
     import mar.linux.process : fork, execve, wait;
 
     PipeFds pipeFds;
@@ -206,7 +206,7 @@ string sourceRelativeShortPath(string fileFullPath = dirName(__FILE_FULL_PATH__)
 */
 string shortPath(string path, string base)
 {
-    //import mar.io;stdout.writeln("[DEBUG] shortPath: path '", path, "' base '", base, "'");
+    //import mar.stdio;stdout.writeln("[DEBUG] shortPath: path '", path, "' base '", base, "'");
     import std.path;
     if (path.isAbsolute)
         return buildNormalizedPath(path);
@@ -267,8 +267,8 @@ passfail mkdirIfDoesNotExist(const(char)[] dir, mode_t mode = S_IRWXU | S_IRWXG 
 {
     import mar.c : tempCString;
     import mar.file : isDir;
-    import mar.io;
-    import mar.filesys : mkdir;
+    import mar.stdio;
+    import mar.linux.filesys : mkdir;
 
     mixin tempCString!("dirCStr", "dir");
     if (!isDir(dirCStr.str))
@@ -356,7 +356,7 @@ passfail installFile(const(char)[] source, const(char)[] dest, size_t mkdirStart
     import std.file : exists;
     if (exists(dest))
     {
-        import mar.io;
+        import mar.stdio;
         stdout.writeln("already installed '", dest, "'");
     }
     else

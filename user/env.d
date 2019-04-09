@@ -1,7 +1,7 @@
 import mar.array : aequals;
 import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
-import mar.io : stdout;
+import mar.stdio : stdout;
 import mar.process : exit;
 
 import log;

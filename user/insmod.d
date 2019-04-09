@@ -3,7 +3,7 @@ import mar.sentinel : SentinelPtr, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
 import mar.print : formatHex;
 import mar.mem : malloc;
-import mar.io : stdout;
+import mar.stdio : stdout;
 import mar.linux.file : open, OpenFlags, OpenAccess, close, read, stat_t, fstat;
 import mar.linux.syscall : sys_init_module, sys_finit_module;
 import log;

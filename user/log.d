@@ -5,7 +5,7 @@ Log an error.
 */
 void logError(T...)(T args)
 {
-    import mar.io : stderr;
+    import mar.stdio : stderr;
     stderr.writeln("Error: ", args);
 }
 /**
@@ -15,7 +15,7 @@ void logInfo(T...)(T args)
 {
     version (EnableLogInfo)
     {
-        import mar.io : stdout;
+        import mar.stdio : stdout;
         stdout.writeln(args);
     }
 }

@@ -12,10 +12,10 @@ import mar.print : formatHex, sprintMallocNoSentinel, sprintMallocSentinel;
 import mar.file : FileD, open, openat, close, read, lseek, isDir, fstatat, formatMode,
                    stat_t, ModeFlags, OpenFlags, OpenAccess, OpenCreateFlags, SeekFrom;
 static import mar.file.perm;
-import mar.io : stdout;
-import mar.filesys : umask, mkdir, rmdir, umount2,
-                      linux_dirent, getdents, LinuxDirentRange,
-                      AT_SYMLINK_NOFOLLOW;
+import mar.stdio : stdout;
+import mar.linux.filesys : umask, mkdir, rmdir, umount2,
+                           linux_dirent, getdents, LinuxDirentRange,
+                           AT_SYMLINK_NOFOLLOW;
 import mar.process : exit;
 
 import log;

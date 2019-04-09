@@ -4,7 +4,7 @@ import mar.sentinel : SentinelPtr, assumeSentinel, lit;
 import mar.c : cstring;
 import mar.print : sprint;
 import mar.file : FileD, open, close, OpenFlags, OpenAccess, dup2;
-import mar.io : stdout, stdin, stderr;
+import mar.stdio : stdout, stdin, stderr;
 import mar.env : getenv;
 import mar.findprog;
 import mar.cmdopt;
