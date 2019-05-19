@@ -1,7 +1,7 @@
 import mar.mem : malloc;
 import mar.array : aequals, acopy;
 import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
-import mar.print : formatHex, sprint;
+import mar.print : formatHex, sprintSentinel;
 import mar.ctypes : mode_t;
 import mar.c : cstring;
 import mar.stdio;
@@ -123,8 +123,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring par
             }
             char[20] vtFileBuffer;
             auto vtNum = findOpenVt(ttyControlFd);
-            auto vtFileLength = sprint(vtFileBuffer, "/dev/tty", vtNum, '\0');
-            auto vtFile = vtFileBuffer[0 .. vtFileLength - 1].assumeSentinel;
+            auto vtFile = sprintSentinel(vtFileBuffer, "/dev/tty", vtNum);
 
             // Note: have to assign the array literal to a static variable
             //       otherwise it will require GC which does not work with betterC

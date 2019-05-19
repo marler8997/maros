@@ -2,7 +2,7 @@ import mar.conv : tryTo;
 import mar.array : aequals;
 import mar.sentinel : SentinelPtr, assumeSentinel, lit;
 import mar.c : cstring;
-import mar.print : sprint;
+import mar.print : sprintSentinel;
 import mar.file : FileD, open, close, OpenFlags, OpenAccess, dup2;
 import mar.stdio : stdout, stdin, stderr;
 import mar.env : getenv;
@@ -111,8 +111,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
 
     // TODO: is this size good?
     char[20] vtFileBuffer;
-    auto vtFileLength = sprint(vtFileBuffer, "/dev/tty", vtNum, '\0');
-    auto vtFile = vtFileBuffer[0 .. vtFileLength - 1].assumeSentinel;
+    auto vtFile = sprintSentinel(vtFileBuffer, "/dev/tty", vtNum);
 
     stdout.write("running program \"", argv[0], "\" on ", vtFile, "\n");
 

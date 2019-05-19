@@ -13,7 +13,7 @@ import mar.flag;
 import mar.array : acopy, aequals, endsWith;
 import mar.sentinel : SentinelPtr, SentinelArray, lit, litPtr, assumeSentinel;
 import mar.c : cstring;
-import mar.print : sprint, sprintMallocSentinel, formatHex;
+import mar.print : sprintSentinel, sprintSentinelJustReturnSize, sprintMallocSentinel, formatHex;
 import mar.file : open, close, read, isDir, fileExists, lseek,
     OpenFlags, OpenAccess, OpenCreateFlags, ModeFlags, SeekFrom;
 import mar.stdio : stdout;
@@ -386,7 +386,7 @@ void doMkdir(cstring path)
 void doMkdir(size_t bufferSize, T...)(T args)
 {
     char[bufferSize] buffer;
-    auto length = sprint(buffer, args, '\0') - 1;
+    sprintSentinelJustReturnSize(buffer, args);
     doMkdir(buffer.ptr.assumeSentinel);
 }
 
@@ -409,7 +409,7 @@ void mkPidPath(cstring pidPath)
 auto link(size_t bufferSize, T...)(cstring oldName, T newNameArgs)
 {
     char[bufferSize] buffer;
-    auto length = sprint(buffer, newNameArgs, '\0') - 1;
+    sprintSentinelJustReturnSize(buffer, newNameArgs);
     stdout.write("[DEBUG] link '", buffer.ptr.assumeSentinel, "' -> '", oldName, "'\n");
     return link(oldName, buffer.ptr.assumeSentinel);
 }
@@ -425,8 +425,7 @@ void runRexRootOpsSetup()
     if (pidResult.val == 0)
     {
         char[100] progBuffer;
-        auto progLength = sprint(progBuffer, argv0, "rootops", '\0') - 1;
-        auto prog = progBuffer[0 .. progLength].assumeSentinel;
+        auto prog = sprintSentinel(progBuffer, argv0, "rootops");
 
         cstring[3] args;
         args[0] = prog.ptr;
@@ -475,8 +474,7 @@ void setupRootfs(Settings* settings)
     }
     stdout.write("[DEBUG] pid is ", pid.val, "\n");
     char[50] pidPathBuffer;
-    auto pidPathLength = sprint(pidPathBuffer, "/var/rex/", pid.val, '\0') - 1;
-    auto pidPath = pidPathBuffer[0 .. pidPathLength].assumeSentinel;
+    auto pidPath = sprintSentinel(pidPathBuffer, "/var/rex/", pid.val);
     stdout.write("[DEBUG] pidPath is '", pidPath, "'\n");
     mkPidPath(pidPath.ptr);
     doMkdir!60("/var/rex/", pid.val, "/rex");
@@ -492,8 +490,7 @@ void setupRootfs(Settings* settings)
     static void doDir(T)(T pidPath, cstring dir, Flag!"alsoMount" alsoMount)
     {
         char[60] targetBuffer = void;
-        auto targetLength = sprint(targetBuffer, pidPath, dir, '\0') - 1;
-        auto target = targetBuffer[0 .. targetLength].assumeSentinel;
+        auto target = sprintSentinel(targetBuffer, pidPath, dir);
         {
             auto result = mkdir(target.ptr, mkdirFlags);
             if (result.failed)
