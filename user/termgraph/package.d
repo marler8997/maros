@@ -4,10 +4,14 @@ import mar.passfail;
 import mar.flag;
 import mar.sentinel : assumeSentinel;
 import mar.c : cstring;
-import mar.print : sprint;
 import mar.file : open, OpenFlags, OpenAccess, tryGetFileSize, write;
 import mar.stdio : stdout, stderr;
 import mar.mmap : MemoryMap, createMemoryMap;
+
+version (NoExit) { } else
+{
+    import mar.print : sprint;
+}
 
 import log;
 
