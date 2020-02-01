@@ -22,13 +22,23 @@ once you've identified the latest release check it out using:
 git checkout <tag> -b <tag>
 ```
 
+# Building with Nix
+
+```
+nix-shell -p gcc openssl libelf bc
+```
+
 ### configure
+
 from inside the linux repo:
 ```
-# You can start with your current host config by copying it:
+# you can start with the default configuration like this
+make ARCH=x86_64 x86_64_defconfig
+
+# OR you can start with your current host config by copying it:
 cp /boot/config-$(uname -r) .config
 
-# after copying this config, you can normalize it by running
+# if you copied your own config, you can normalize it by running
 make defconfig
 
 # To make any changes you can use the console gui (ncurses)
