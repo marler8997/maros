@@ -59,7 +59,7 @@ extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring env
     auto fd = open(filename, OpenFlags(OpenAccess.readOnly));
     if (!fd.isValid)
     {
-        stdout.write("failed to open file '", filename, "', result=", fd.numval);
+        logError("failed to open file '", filename, "', result=", fd.numval);
         return 1;
     }
     {
