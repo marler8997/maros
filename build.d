@@ -2,6 +2,9 @@
 //!importPath mar/src
 //!debug
 //!debugSymbols
+
+// we don't use this version because we use methods that will assert on allocation failure
+// such as sprintMallocSentinel
 //!version NoExit
 
 import core.stdc.errno;
