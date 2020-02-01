@@ -196,10 +196,7 @@ void usage()
 
 int main(string[] args)
 {
-    try
-    {
-        return tryMain(args);
-    }
+    try { return tryMain(args); }
     catch(EnforceException) { return 1; }
 }
 int tryMain(string[] args)
@@ -207,9 +204,9 @@ int tryMain(string[] args)
     args = args[1 .. $];
     string configOption;
     {
-        auto newArgsLength = 0;
+        size_t newArgsLength = 0;
         scope (exit) args = args[0 .. newArgsLength];
-        for (uint i = 0; i < args.length; i++)
+        for (size_t i = 0; i < args.length; i++)
         {
             auto arg = args[i];
             if (arg[0] != '-')
