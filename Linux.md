@@ -25,7 +25,7 @@ git checkout <tag> -b <tag>
 # Building with Nix
 
 ```
-nix-shell -p gcc openssl libelf bc
+nix-shell -p gcc openssl libelf bc flex bison
 ```
 
 ### configure
