@@ -1,23 +1,28 @@
+A toy OS.  Currently includes:
+
+* an x86 bootloader
+* build tools to create a bootable disk image
+* a linux rootfs (would like to add support for more kernels)
+
+
+Dependencies
+--------------------------------------------------------------------------------
+* A linux kernel image (see `Linux.md` for build instructions).
+* The Zig compiler and an OS that can run the Zig compiler
+
 Configuration
 --------------------------------------------------------------------------------
-For now all the configuration is in `config.txt`.  An example is commited but
-feel free to modify it to fit your needs.
+Edit `config.zig` to modify the configuration.
 
 Build
 --------------------------------------------------------------------------------
-The build script is written in D, but depends on the mar library. It assumes it
-can access the repo via the "mar" folder located in the root repository. You
-can clone the repo diretly here:
-```bash
-git clone https://github.com/marler8997/mar
 ```
-or link to it somewhere else
-```bash
-ln -s <mar_repo_path> mar
+zig build
 ```
 
-After that you can run `./build.d` to see all the commands to build your linux
-distribution.
+This will build a bootable disk image in `zig-out/maros.img`.
+
+Run `zig build --help` to see custom steps that can be run individually.
 
 Test userspace tools on the host
 --------------------------------------------------------------------------------
@@ -41,5 +46,6 @@ Bootloader Resources
 
 TODO
 --------------------------------------------------------------------------------
-see if I can support the bsd kernel
-add programs `rm`, `strace`, `echo`
+* get zig running in the OS, use it to build itself
+* see if I can support the bsd kernel
+* add programs `rm`, `strace`, `echo`
