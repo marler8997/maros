@@ -4,3 +4,6 @@ obj/
 /rootfs
 /crystal
 /mar
+zig-cache/
+zig-out/
+*.gen.zig
