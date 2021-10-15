@@ -56,6 +56,25 @@ pub fn build(b: *Builder) !void {
 
     try addImageSteps(b, config, alloc_image_step, bootloader_image_size_step, kernel_image_size_step);
     try addQemuStep(b, alloc_image_step.image_file);
+    try addZigBootloader(b, target, mode);
+}
+
+fn addZigBootloader(b: *Builder, target: std.build.Target, mode: std.builtin.Mode) !void {
+    const bin = b.addExecutable("zigboot", "zigboot.zig");
+    bin.setTarget(target);
+    //bin.setBuildMode(mode);
+    _ = mode;
+    bin.setBuildMode(.ReleaseSmall);
+    bin.setLinkerScriptPath(.{ .path = "bootloader.ld" });
+
+    // TODO: this doesn't work with installRaw apparently (file issue and fix)
+    //       I don't really want to install the bootloader to the "bin" install dir
+    //       I'd rather put it in a directory named "boot"
+    //bin.override_dest_dir = .prefix;
+    //bin.installRaw("bootloader");
+    const bin_install = b.addInstallRaw(bin, "zigboot");
+    _ = bin_install;
+    b.getInstallStep().dependOn(&bin_install.step);
 }
 
 const InstallSymlink = struct {
