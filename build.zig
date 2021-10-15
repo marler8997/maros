@@ -38,7 +38,21 @@ pub fn build(b: *Builder) !void {
     const bootloader_image_size_step = try addBootloaderSteps(b, target);
 
     const kernel_image_size_step = try b.allocator.create(GetFileSizeStep);
-    kernel_image_size_step.* = GetFileSizeStep.init(b, config.kernel_image);
+    switch (config.kernel) {
+        .linux => |kernel| {
+            kernel_image_size_step.* = GetFileSizeStep.init(b, kernel.image);
+        },
+        .maros => {
+            const kernel = b.addExecutable("kernel", "kernel/start.zig");
+            kernel.setTarget(target);
+            kernel.setBuildMode(mode);
+            //bin.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
+            const install = b.addInstallRaw(kernel, "kernel");
+
+            kernel_image_size_step.* = GetFileSizeStep.init(b, b.getInstallPath(install.dest_dir, install.dest_filename));
+            kernel_image_size_step.step.dependOn(&install.step);
+        },
+    }
 
     try addImageSteps(b, config, alloc_image_step, bootloader_image_size_step, kernel_image_size_step);
     try addQemuStep(b, alloc_image_step.image_file);

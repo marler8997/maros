@@ -60,11 +60,17 @@ const RootfsPart = struct {
     size: MemorySize,
 };
 
-pub const Config = struct {
-    //kernelPath: []const u8,
-    //kernelRepo: []const u8,
-    kernel_image: []const u8,
+const KernelConfig = union(enum) {
+    linux: struct {
+        image: []const u8,
+    },
+    maros: struct {
+        // TODO
+    },
+};
 
+pub const Config = struct {
+    kernel: KernelConfig,
     kernelCommandLine: ?[]const u8,
 
     //imageFile: []const u8,
