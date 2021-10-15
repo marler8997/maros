@@ -39,6 +39,8 @@ sudo chroot rootfs /sbin/mount
 # Resources
 
 * small C standard library implementation: https://github.com/aligrudi/neatlibc
+* Linker Scripts (LLVM leverages GNU) https://sourceware.org/binutils/docs/ld/Scripts.html
+
 
 Bootloader Resources
 --------------------------------------------------------------------------------
