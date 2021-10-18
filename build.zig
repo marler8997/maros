@@ -43,11 +43,21 @@ pub fn build(b: *Builder) !void {
             kernel_image_size_step.* = GetFileSizeStep.init(b, kernel.image);
         },
         .maros => {
-            const kernel = b.addExecutable("kernel", "kernel/start.zig");
+            const kernel = b.addExecutable("kernel.elf", "kernel/start.zig");
             kernel.setTarget(target);
             kernel.setBuildMode(mode);
-            //bin.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
-            const install = b.addInstallRaw(kernel, "kernel");
+            kernel.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
+            kernel.override_dest_dir = .prefix;
+
+            // TODO: in this change, override_dest_dir should affect installRaw
+            //       https://github.com/ziglang/zig/pull/9975
+            const install = b.addInstallRaw(kernel, "kernel.raw");
+            install.dest_dir = .prefix; // hack, this currently messes up the uninstall step
+
+            const install_elf = b.addInstallArtifact(kernel);
+            b.getInstallStep().dependOn(&install_elf.step);
+
+            kernel.install(); // install an elf version also for debugging
 
             kernel_image_size_step.* = GetFileSizeStep.init(b, b.getInstallPath(install.dest_dir, install.dest_filename));
             kernel_image_size_step.step.dependOn(&install.step);
@@ -67,12 +77,13 @@ fn addZigBootloader(b: *Builder, target: std.build.Target, mode: std.builtin.Mod
     bin.setBuildMode(.ReleaseSmall);
     bin.setLinkerScriptPath(.{ .path = "bootloader.ld" });
 
-    // TODO: this doesn't work with installRaw apparently (file issue and fix)
-    //       I don't really want to install the bootloader to the "bin" install dir
-    //       I'd rather put it in a directory named "boot"
+    // workaround installRaw not respecting override_dest_dir
+    // fix here: https://github.com/ziglang/zig/pull/9975
     //bin.override_dest_dir = .prefix;
     //bin.installRaw("bootloader");
     const bin_install = b.addInstallRaw(bin, "zigboot");
+    // TODO: remove this workaroudn
+    bin_install.dest_dir = .prefix;
     _ = bin_install;
     b.getInstallStep().dependOn(&bin_install.step);
 }
@@ -145,6 +156,8 @@ fn addBootloaderSteps(b: *Builder, target: std.build.Target) !*GetFileSizeStep {
     //bin.override_dest_dir = .prefix;
     //bin.installRaw("bootloader");
     const bin_install = b.addInstallRaw(bin, "bootloader");
+    // TODO: remove this workaround
+    bin_install.dest_dir = .prefix;
 
     const size_step = try b.allocator.create(GetFileSizeStep);
     size_step.* = GetFileSizeStep.init(b, b.getInstallPath(bin_install.dest_dir, bin_install.dest_filename));

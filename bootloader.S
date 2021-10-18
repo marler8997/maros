@@ -1,7 +1,7 @@
 //
 // NOTE: linux boot protocol can be found here:
 //
-//  https://github.com/torvalds/linux/blob/master/Documentation/x86/boot.txt
+//  https://github.com/torvalds/linux/blob/master/Documentation/x86/boot.rst
 //
 // Bootloader Memory Map
 // ------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ second_stage:
         // pass information to kernel
         movb  $0xe1,    %es:0x210   // 0xTV T=loader_type V=version
         movb  $0x80,    %es:0x211   // heap use? !! set bit5 to make kernel quiet
-        movw  $0xde00,  %es:0x224   // head_end_ptr
+        movw  $0xde00,  %es:0x224   // heap_end_ptr
         movb  $0x01,    %es:0x227   // ext_loader_type / bootloader id
         movl  $0x1e000, %es:0x228   // cmd line ptr
 
