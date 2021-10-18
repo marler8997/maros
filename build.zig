@@ -66,26 +66,6 @@ pub fn build(b: *Builder) !void {
 
     try addImageSteps(b, config, alloc_image_step, bootloader_image_size_step, kernel_image_size_step);
     try addQemuStep(b, alloc_image_step.image_file);
-    try addZigBootloader(b, target, mode);
-}
-
-fn addZigBootloader(b: *Builder, target: std.build.Target, mode: std.builtin.Mode) !void {
-    const bin = b.addExecutable("zigboot", "zigboot.zig");
-    bin.setTarget(target);
-    //bin.setBuildMode(mode);
-    _ = mode;
-    bin.setBuildMode(.ReleaseSmall);
-    bin.setLinkerScriptPath(.{ .path = "bootloader.ld" });
-
-    // workaround installRaw not respecting override_dest_dir
-    // fix here: https://github.com/ziglang/zig/pull/9975
-    //bin.override_dest_dir = .prefix;
-    //bin.installRaw("bootloader");
-    const bin_install = b.addInstallRaw(bin, "zigboot");
-    // TODO: remove this workaroudn
-    bin_install.dest_dir = .prefix;
-    _ = bin_install;
-    b.getInstallStep().dependOn(&bin_install.step);
 }
 
 const InstallSymlink = struct {
@@ -145,19 +125,34 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
 }
 
 fn addBootloaderSteps(b: *Builder, target: std.build.Target) !*GetFileSizeStep {
-    const bin = b.addExecutable("bootloader", null);
-    bin.setTarget(target);
-    bin.addAssemblyFile("bootloader.S");
-    bin.setLinkerScriptPath(.{ .path = "bootloader.ld" });
+    const bin = b.addExecutable("bootloader.elf", "boot/zigboot.zig");
 
-    // TODO: this doesn't work with installRaw apparently (file issue and fix)
-    //       I don't really want to install the bootloader to the "bin" install dir
-    //       I'd rather put it in a directory named "boot"
-    //bin.override_dest_dir = .prefix;
-    //bin.installRaw("bootloader");
-    const bin_install = b.addInstallRaw(bin, "bootloader");
+    var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
+    if (cpu_arch == .x86_64)
+        cpu_arch = .i386;
+    bin.setTarget(.{
+        .cpu_arch = cpu_arch,
+        .os_tag = .freestanding,
+        .abi = .code16,
+    });
+    // this causes objdump to fail???
+    //bin.setBuildMode(.ReleaseSmall);
+    bin.addAssemblyFile("boot/bootsector.S");
+    bin.addAssemblyFile("boot/bootstage2.S");
+    bin.setLinkerScriptPath(.{ .path = "boot/link.ld" });
+
+    bin.override_dest_dir = .prefix;
+
+    // install elf file for debugging
+    const install_elf = b.addInstallArtifact(bin);
+    b.getInstallStep().dependOn(&install_elf.step);
+
+    //bin.installRaw("bootloader.raw");
+    //const bin_install = b.addInstallRaw(bin, "bootloader.raw");
+    const bin_install = @import("InstallRawStep.zig").create(b, bin, "bootloader.raw", .bin);
     // TODO: remove this workaround
     bin_install.dest_dir = .prefix;
+
 
     const size_step = try b.allocator.create(GetFileSizeStep);
     size_step.* = GetFileSizeStep.init(b, b.getInstallPath(bin_install.dest_dir, bin_install.dest_filename));
