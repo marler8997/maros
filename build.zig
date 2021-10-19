@@ -70,6 +70,7 @@ pub fn build(b: *Builder) !void {
 
     try addImageSteps(b, config, alloc_image_step, bootloader_image_size_step, kernel_image_size_step);
     try addQemuStep(b, alloc_image_step.image_file);
+    try addBochsStep(b, alloc_image_step.image_file);
 }
 
 
@@ -88,7 +89,7 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
     try args.append("-m");
     try args.append("2048");
     try args.append("-drive");
-    try args.append(try std.fmt.allocPrint(b.allocator, "format=raw,file={s}", .{image_file}));
+    try args.append(b.fmt("format=raw,file={s}", .{image_file}));
     // TODO: make this an option
     //try args.append("--enable-kvm");
 
@@ -120,6 +121,19 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
     qemu.step.dependOn(b.getInstallStep());
 
     b.step("qemu", "Run maros in the Qemu VM").dependOn(&qemu.step);
+}
+
+fn addBochsStep(b: *Builder, image_file: []const u8) !void {
+    var args = std.ArrayList([]const u8).init(b.allocator);
+    try args.append("bochs");
+    try args.append("-f");
+    try args.append("/dev/null");
+    try args.append("memory: guest=1024, host=1024");
+    try args.append("boot: disk");
+    try args.append(b.fmt("ata0-master: type=disk, path={s}, mode=flat", .{image_file}));
+    const bochs = b.addSystemCommand(args.toOwnedSlice());
+    bochs.step.dependOn(b.getInstallStep());
+    b.step("bochs", "Run maros in the Bochs VM").dependOn(&bochs.step);
 }
 
 fn addBootloaderSteps(b: *Builder, target: std.build.Target) !*GetFileSizeStep {
