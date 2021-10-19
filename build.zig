@@ -118,6 +118,26 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
     try args.append("--serial");
     try args.append("stdio");
 
+    if (if (b.option(bool, "debugger", "enable the qemu debugger")) |o| o else false) {
+        // gdb instructions:
+        //     (gdb) target remote :1234
+        // to break in the bootsector code
+        //     (gdb) break *0x7c00
+        // to break in the stage2 code
+        //     (gdb) break *0x7e00
+        //
+        // go into assembly mode:
+        //     (gdb) layout asm
+        //
+        // TODO: get these working
+        //     (gdb) set architecture i8086
+        //     (gdb) add-symbol-file maros/zig-out/bootloader.elf
+        try args.append("-S"); // prevent cpu from starting automatically
+                               // send the "continue" command to begin execution
+        try args.append("-gdb");
+        try args.append("tcp::1234");
+    }
+
     const qemu = b.addSystemCommand(args.toOwnedSlice());
     qemu.step.dependOn(b.getInstallStep());
 
