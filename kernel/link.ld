@@ -6,8 +6,13 @@ MEMORY {
 }
 SECTIONS {
     . = ORIGIN(load_mem);
-    .bootheader ORIGIN(load_mem) : {
+    .bootheader ALIGN(4) : {
         KEEP(*(.bootheader))
+        # NOTE: I can't seem to get the linker to
+        #       put .text.start before 0x280 (like 0x274), it's like
+        #       it needs to align it on a 16-byte boundary
+        . = ORIGIN(load_mem) + 0x280;
+        *(.text.start)
     } >load_mem
     .text : {
         *(.text*)

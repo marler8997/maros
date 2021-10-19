@@ -31,6 +31,19 @@ pub fn build(b: *Builder) !void {
         }
         break :blk target;
     };
+    const boot_target = blk: {
+        var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
+        if (cpu_arch == .x86_64 or cpu_arch == .i386) {
+            break :blk std.build.Target{
+                .cpu_arch = .i386,
+                .os_tag = .freestanding,
+                .abi = .code16,
+            };
+        }
+        std.log.err("unhandled target", .{});
+        std.os.exit(0xff);
+    };
+
     const mode = b.standardReleaseOptions();
 
     try addUserSteps(b, target, mode, config, symlinker);
@@ -39,7 +52,7 @@ pub fn build(b: *Builder) !void {
     alloc_image_step.* = AllocImageStep.init(b, config.imageSize.byteValue());
     b.step("alloc-image", "Allocate the image file").dependOn(&alloc_image_step.step);
 
-    const bootloader_image_size_step = try addBootloaderSteps(b, target);
+    const bootloader_image_size_step = try addBootloaderSteps(b, boot_target);
 
     const kernel_image_size_step = try b.allocator.create(GetFileSizeStep);
     switch (config.kernel) {
@@ -48,8 +61,10 @@ pub fn build(b: *Builder) !void {
         },
         .maros => {
             const kernel = b.addExecutable("kernel", "kernel/start.zig");
-            kernel.setTarget(target);
-            kernel.setBuildMode(mode);
+            // TODO: for now we're only working with the boot target
+            kernel.setTarget(boot_target);
+            //kernel.setBuildMode(mode);
+            kernel.setBuildMode(.ReleaseSmall);
             kernel.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
             kernel.override_dest_dir = .prefix;
 
@@ -136,17 +151,7 @@ fn addBochsStep(b: *Builder, image_file: []const u8) !void {
     b.step("bochs", "Run maros in the Bochs VM").dependOn(&bochs.step);
 }
 
-fn addBootloaderSteps(b: *Builder, target: std.build.Target) !*GetFileSizeStep {
-    var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
-    if (cpu_arch == .x86_64)
-        cpu_arch = .i386;
-    const boot_target = std.build.Target{
-        .cpu_arch = cpu_arch,
-        .os_tag = .freestanding,
-        .abi = .code16,
-    };
-
-
+fn addBootloaderSteps(b: *Builder, boot_target: std.build.Target) !*GetFileSizeStep {
     // compile this separately so that it can have a different release mode
     // it has to fit inside 446 bytes
     const use_zig_bootsector = if (b.option(bool, "zigboot", "enable experimental zig bootsector")) |o| o else false;
