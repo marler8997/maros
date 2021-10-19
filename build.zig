@@ -371,17 +371,19 @@ const GenerateCombinedToolsSourceStep = struct {
 
 fn addUserStep(b: *Builder, target: std.build.Target, mode: std.builtin.Mode, config: *const Config) !void {
     const build_user_step = b.step("user", "Build userspace");
+    const rootfs_install_dir = std.build.InstallDir { .custom = "rootfs" };
     if (config.combine_tools) {
         const gen_tools_file_step = try b.allocator.create(GenerateCombinedToolsSourceStep);
         gen_tools_file_step.* = GenerateCombinedToolsSourceStep.init(b);
         const exe = b.addExecutable("maros", "user" ++ std.fs.path.sep_str ++ "combined_root.zig");
         exe.setTarget(target);
         exe.setBuildMode(mode);
+        exe.override_dest_dir = rootfs_install_dir;
         exe.install();
         exe.step.dependOn(&gen_tools_file_step.step);
         inline for (commandLineTools) |commandLineTool| {
             const install_symlink = try b.allocator.create(InstallSymlink);
-            install_symlink.* = InstallSymlink.init(b, "maros", .bin, commandLineTool.name);
+            install_symlink.* = InstallSymlink.init(b, "maros", rootfs_install_dir, commandLineTool.name);
             install_symlink.step.dependOn(&exe.install_step.?.step);
             build_user_step.dependOn(&install_symlink.step);
         }
@@ -394,6 +396,7 @@ fn addUserStep(b: *Builder, target: std.build.Target, mode: std.builtin.Mode, co
                 .name = "tool",
                 .path = .{ .path = "user" ++ std.fs.path.sep_str ++ commandLineTool.name ++ ".zig" },
             });
+            exe.override_dest_dir = rootfs_install_dir;
             exe.install();
             build_user_step.dependOn(&exe.install_step.?.step);
         }
