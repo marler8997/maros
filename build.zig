@@ -11,9 +11,13 @@ const MemorySize = buildconfig.MemorySize;
 const MappedFile = @import("MappedFile.zig");
 const mbr = @import("mbr.zig");
 
+const symlinks = @import("build/symlinks.zig");
+
 pub fn build(b: *Builder) !void {
     const config = try b.allocator.create(Config);
     config.* = try @import("config.zig").makeConfig();
+
+    const symlinker = try symlinks.getSymlinkerFromFilesystemTest(b, .prefix, "rootfs.metadta");
 
     const target = blk: {
         var target = b.standardTargetOptions(.{});
@@ -29,7 +33,7 @@ pub fn build(b: *Builder) !void {
     };
     const mode = b.standardReleaseOptions();
 
-    try addUserStep(b, target, mode, config);
+    try addUserSteps(b, target, mode, config, symlinker);
 
     const alloc_image_step = try b.allocator.create(AllocImageStep);
     alloc_image_step.* = AllocImageStep.init(b, config.imageSize.byteValue());
@@ -68,33 +72,7 @@ pub fn build(b: *Builder) !void {
     try addQemuStep(b, alloc_image_step.image_file);
 }
 
-const InstallSymlink = struct {
-    step: std.build.Step,
-    builder: *Builder,
-    symlink_target: []const u8,
-    dir: std.build.InstallDir,
-    dest_rel_path: []const u8,
 
-    pub fn init(
-        builder: *Builder,
-        symlink_target: []const u8,
-        dir: std.build.InstallDir,
-        dest_rel_path: []const u8,
-    ) InstallSymlink {
-        return .{
-            .step = std.build.Step.init(.custom, "install symlink", builder.allocator, make),
-            .builder = builder,
-            .symlink_target = symlink_target,
-            .dir = dir,
-            .dest_rel_path = dest_rel_path,
-        };
-    }
-    fn make(step: *std.build.Step) !void {
-        const self = @fieldParentPtr(InstallSymlink, "step", step);
-        const full_dest_path = self.builder.getInstallPath(self.dir, self.dest_rel_path);
-        _ = try updateSymlink(self.symlink_target, full_dest_path, .{});
-    }
-};
 
 // currently the bootloader relies on a hardcoded size to find the
 // kernel comand line and kernel image locations
@@ -369,7 +347,13 @@ const GenerateCombinedToolsSourceStep = struct {
     }
 };
 
-fn addUserStep(b: *Builder, target: std.build.Target, mode: std.builtin.Mode, config: *const Config) !void {
+fn addUserSteps(
+    b: *Builder,
+    target: std.build.Target,
+    mode: std.builtin.Mode,
+    config: *const Config,
+    symlinker: symlinks.Symlinker,
+) !void {
     const build_user_step = b.step("user", "Build userspace");
     const rootfs_install_dir = std.build.InstallDir { .custom = "rootfs" };
     if (config.combine_tools) {
@@ -382,10 +366,14 @@ fn addUserStep(b: *Builder, target: std.build.Target, mode: std.builtin.Mode, co
         exe.install();
         exe.step.dependOn(&gen_tools_file_step.step);
         inline for (commandLineTools) |commandLineTool| {
-            const install_symlink = try b.allocator.create(InstallSymlink);
-            install_symlink.* = InstallSymlink.init(b, "maros", rootfs_install_dir, commandLineTool.name);
-            install_symlink.step.dependOn(&exe.install_step.?.step);
-            build_user_step.dependOn(&install_symlink.step);
+            const install_symlink_step = symlinker.createInstallSymlinkStep(
+                b,
+                "maros",
+                rootfs_install_dir,
+                commandLineTool.name,
+            );
+            install_symlink_step.dependOn(&exe.install_step.?.step);
+            build_user_step.dependOn(install_symlink_step);
         }
     } else {
         inline for (commandLineTools) |commandLineTool| {
@@ -672,24 +660,3 @@ const commandLineTools = [_]CommandLineTool {
 //     CommandLineTool("rex", No.setRootSuid, null, CAP_TO_MASK(CAP_SYS_ADMIN) | CAP_TO_MASK(CAP_SYS_CHROOT)),
 //     CommandLineTool("rexrootops", Yes.setRootSuid),
 };
-
-/// returns: true if the symlink was updated, false if it was already set to the given `target_path`
-pub fn updateSymlink(target_path: []const u8, sym_link_path: []const u8, flags: std.fs.SymLinkFlags) !bool {
-    if (std.fs.path.dirname(sym_link_path)) |dirname| {
-        try std.fs.cwd().makePath(dirname);
-    }
-
-    var current_target_path_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-    if (std.fs.readLinkAbsolute(sym_link_path, &current_target_path_buffer)) |current_target_path| {
-        if (std.mem.eql(u8, target_path, current_target_path)) {
-            //std.debug.print("symlink '{s}' already points to '{s}'\n", .{ sym_link_path, target_path });
-            return false; // already up-to-date
-        }
-        try std.os.unlink(sym_link_path);
-    } else |e| switch (e) {
-        error.FileNotFound => {},
-        else => return e,
-    }
-    try std.fs.cwd().symLink(target_path, sym_link_path, flags);
-    return true; // updated
-}
