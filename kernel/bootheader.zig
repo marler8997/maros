@@ -43,7 +43,7 @@ const LOADED_HIGH = 0x01;
 // 000001f0  ff 1f
 // root_flags: 01 00
 // 38 37 08 00  00 00 ff ff 00 00 55 aa  |....87........U.|
-export const _ linksection(".bootheader") = BootHeader {
+export const bootheader linksection(".bootheader") = BootHeader {
     .setup_sects = 0x03, // just hardcode for now
     .root_flags = 0,
     .syssize = 0x123, // just hardcode for now

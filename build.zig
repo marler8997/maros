@@ -43,7 +43,7 @@ pub fn build(b: *Builder) !void {
             kernel_image_size_step.* = GetFileSizeStep.init(b, kernel.image);
         },
         .maros => {
-            const kernel = b.addExecutable("kernel.elf", "kernel/start.zig");
+            const kernel = b.addExecutable("kernel", "kernel/start.zig");
             kernel.setTarget(target);
             kernel.setBuildMode(mode);
             kernel.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
