@@ -125,20 +125,41 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
 }
 
 fn addBootloaderSteps(b: *Builder, target: std.build.Target) !*GetFileSizeStep {
-    const bin = b.addExecutable("bootloader.elf", "boot/zigboot.zig");
-
     var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
     if (cpu_arch == .x86_64)
         cpu_arch = .i386;
-    bin.setTarget(.{
+    const boot_target = std.build.Target{
         .cpu_arch = cpu_arch,
         .os_tag = .freestanding,
         .abi = .code16,
-    });
+    };
+
+
+    // compile this separately so that it can have a different release mode
+    // it has to fit inside 446 bytes
+    const use_zig_bootsector = if (b.option(bool, "zigboot", "enable experimental zig bootsector")) |o| o else false;
+    var zigbootsector = b.addObject("zigbootsector", "boot/bootsector.zig");
+    zigbootsector.setTarget(boot_target);
+    zigbootsector.setBuildMode(.ReleaseSmall);
+    // TODO: install so we can look at it easily, but zig build doesn't like installing
+    //       objects yet
+    //zigbootsector.install();
+
+    var asmbootsector = b.addObject("asmbootsector", "boot/bootsector.S");
+    asmbootsector.setTarget(boot_target);
+    asmbootsector.setBuildMode(.ReleaseSmall);
+
+    const bin = b.addExecutable("bootloader.elf", "boot/zigboot.zig");
+    bin.setTarget(boot_target);
     // this causes objdump to fail???
     //bin.setBuildMode(.ReleaseSmall);
-    bin.addAssemblyFile("boot/bootsector.S");
     bin.addAssemblyFile("boot/bootstage2.S");
+    if (use_zig_bootsector) {
+        // zig bootsector may be a pipe dream
+        bin.addObject(zigbootsector);
+    } else {
+        bin.addObject(asmbootsector);
+    }
     bin.setLinkerScriptPath(.{ .path = "boot/link.ld" });
 
     bin.override_dest_dir = .prefix;

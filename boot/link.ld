@@ -15,8 +15,15 @@ SECTIONS {
 
     . = ORIGIN(ram);
     bootloader : {
-        # the bootsector must come first
-        *(.text.bootsector)
+        # include the zigbootsector first if it exsts
+        *zigbootsector.o(.text.start)
+        *zigbootsector.o(.text)
+        *zigbootsector.o(.bss)
+        *zigbootsector.o(.rodata*)
+
+        # otherwise, we'll use the normal bootsector
+        *asmbootsector.o(.text)
+
         # the stage2 bootloader is loaded at address 0x7e00 by the bootsector code
         . = 0x7e00;
         *(.text.bootstage2)

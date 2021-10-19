@@ -38,7 +38,7 @@
 bootloader_reserve_sector_count = 16
 
 // WARNING: this section name must begin with ".text" for it to have the right section flags
-.section .text.bootsector
+.section .text
 
 _start:
         // initialize segments and stack
