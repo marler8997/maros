@@ -36,12 +36,7 @@ fn build3(b: *Builder) anyerror {
         else => |e| fatal("failed to access '{s}', {s}", .{config, @errorName(e)}),
     };
 
-    // first 4 args are zig_exe, build_root, cache_root and global_cache_root
-    // see std/special/build_runner.zig
-    //
-    // hopefully this doesn't change! ;)
-    //
-    const args = (try std.process.argsAlloc(b.allocator))[5..];
+    const build_runner_args = try std.process.argsAlloc(b.allocator);
 
     var new_args = std.ArrayList([]const u8).init(b.allocator);
     try new_args.append(b.zig_exe);
@@ -49,10 +44,20 @@ fn build3(b: *Builder) anyerror {
     try new_args.append("--build-file");
     try new_args.append(b.pathFromRoot("buildconfigured.zig"));
     try new_args.append("--cache-dir");
-    try new_args.append(b.cache_root);
+    // NOTE: build.zig makes cache_root a relative path,
+    //       this undoes that step and turns it back into an absolute one
+    //       so it works with the new build process
+    try new_args.append(b.pathFromRoot(b.cache_root));
+
+    // first 4 args are zig_exe, build_root, cache_root and global_cache_root
+    // see std/special/build_runner.zig
+    //
+    // hopefully this doesn't change! ;)
+    //
+    const build_args_cmdline_offset = 5;
 
     var skip_next = false;
-    for (args) |arg| {
+    for (build_runner_args[build_args_cmdline_offset..]) |arg| {
         if (skip_next) continue;
         if (std.mem.eql(u8, arg, "--build-file")) {
             skip_next = true;

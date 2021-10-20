@@ -18,9 +18,12 @@ pub fn getSymlinkerFromFilesystemTest(
     metadata_install_dir: std.build.InstallDir,
     metadata_dest_path: []const u8
 ) !Symlinker {
-    try b.makePath(b.cache_root);
+    // for some reason, build.zig make cache_root a relative path??
+    const cache_root_full = b.pathFromRoot(b.cache_root);
+    defer b.allocator.free(cache_root_full);
+    try b.makePath(cache_root_full);
 
-    var cache_root = try std.fs.cwd().openDir(b.cache_root, .{});
+    var cache_root = try std.fs.cwd().openDir(cache_root_full, .{});
     defer cache_root.close();
 
     if (try testSymlinkSupport(cache_root))
