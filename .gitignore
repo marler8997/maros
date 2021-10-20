@@ -3,7 +3,7 @@ bin/
 obj/
 /rootfs
 /crystal
-/mar
+/config.zig
 zig-cache/
 zig-out/
 *.gen.zig
