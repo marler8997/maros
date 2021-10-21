@@ -15,17 +15,17 @@ fn fatal(comptime fmt: []const u8, args: anytype) noreturn {
 }
 
 pub fn build(b: *Builder) !void {
-    build2(b);
+    buildNoreturn(b);
 }
-fn build2(b: *Builder) noreturn {
-    const err = build3(b);
+fn buildNoreturn(b: *Builder) noreturn {
+    const err = buildOrFail(b);
     std.log.err("initial build to setup config.zig failed with {s}", .{@errorName(err)});
     if (@errorReturnTrace()) |trace| {
         std.debug.dumpStackTrace(trace.*);
     }
     std.os.exit(0xff);
 }
-fn build3(b: *Builder) anyerror {
+fn buildOrFail(b: *Builder) anyerror {
     const config = b.pathFromRoot("config.zig");
 
     std.fs.cwd().access(config, .{}) catch |err| switch (err) {
@@ -36,54 +36,39 @@ fn build3(b: *Builder) anyerror {
         else => |e| fatal("failed to access '{s}', {s}", .{config, @errorName(e)}),
     };
 
-    const build_runner_args = try std.process.argsAlloc(b.allocator);
+    const build_step = addBuild(b, .{ .path = "buildconfigured.zig" }, .{});
+    build_step.addArgs(try getBuildArgs(b));
 
-    var new_args = std.ArrayList([]const u8).init(b.allocator);
-    try new_args.append(b.zig_exe);
-    try new_args.append("build");
-    try new_args.append("--build-file");
-    try new_args.append(b.pathFromRoot("buildconfigured.zig"));
-    try new_args.append("--cache-dir");
-    // NOTE: build.zig makes cache_root a relative path,
-    //       this undoes that step and turns it back into an absolute one
-    //       so it works with the new build process
-    try new_args.append(b.pathFromRoot(b.cache_root));
+//    const writer = std.io.getStdErr().writer();
+//    for (build_step.args.items) |arg| {
+//        try writer.print("{s} ", .{arg});
+//    }
+//    try writer.print("\n", .{});
 
-    // first 4 args are zig_exe, build_root, cache_root and global_cache_root
-    // see std/special/build_runner.zig
-    //
-    // hopefully this doesn't change! ;)
-    //
-    const build_args_cmdline_offset = 5;
+    build_step.step.make() catch |err|
+        fatal("buildconfigured.zig failed with {s}", .{@errorName(err)});
+    std.os.exit(0);
+}
 
-    var skip_next = false;
-    for (build_runner_args[build_args_cmdline_offset..]) |arg| {
-        if (skip_next) continue;
-        if (std.mem.eql(u8, arg, "--build-file")) {
-            skip_next = true;
-            continue;
-        }
-        try new_args.append(arg);
-    }
-    const writer = std.io.getStdErr().writer();
-    for (new_args.items) |arg| {
-        try writer.print("{s} ", .{arg});
-    }
-    try writer.print("\n", .{});
-
-    const child = try std.ChildProcess.init(new_args.items, b.allocator);
-    defer child.deinit();
-    child.env_map = b.env_map;
-
-    // TODO: use execve when possible
-    try child.spawn();
-    const term = try child.wait();
-    const status = switch (term) {
-        .Exited => |code| std.os.exit(code),
-        .Signal => |signum| b.fmt("was killed by signal {}", .{signum}),
-        .Stopped => |signum| b.fmt("was stopped by signal {}", .{signum}),
-        .Unknown => |status| b.fmt("died with status {}", .{status}),
-    };
-    std.log.err("zig build {s}", .{status});
-    std.os.exit(0xff);
+// TODO: remove the following if https://github.com/ziglang/zig/pull/9987 is integrated
+fn getBuildArgs(self: *Builder) ! []const [:0]const u8 {
+    const args = try std.process.argsAlloc(self.allocator);
+    return args[5..];
+}
+pub const BuildStepOptions = struct {
+    step_name: ?[]const u8 = null,
+    cache_dir: ?[]const u8 = null,
+};
+pub fn addBuild(self: *Builder, build_file: std.build.FileSource, options: BuildStepOptions) *std.build.RunStep {
+    const run_step = std.build.RunStep.create(
+        self,
+        options.step_name orelse @as([]const u8, self.fmt("zig build {s}", .{build_file.getDisplayName()})),
+    );
+    run_step.addArg(self.zig_exe);
+    run_step.addArg("build");
+    run_step.addArg("--build-file");
+    run_step.addFileSourceArg(build_file);
+    run_step.addArg("--cache-dir");
+    run_step.addArg(options.cache_dir orelse @as([]const u8, self.pathFromRoot(self.cache_root)));
+    return run_step;
 }
