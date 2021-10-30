@@ -45,8 +45,10 @@ fn buildOrFail(b: *Builder) anyerror {
 //    }
 //    try writer.print("\n", .{});
 
-    build_step.step.make() catch |err|
-        fatal("buildconfigured.zig failed with {s}", .{@errorName(err)});
+    build_step.step.make() catch |err| switch (err) {
+        error.UnexpectedExitCode => std.os.exit(0xff), // error already printed by subprocess
+        else => |e| return e,
+    };
     std.os.exit(0);
 }
 
