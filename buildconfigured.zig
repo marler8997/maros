@@ -187,7 +187,7 @@ fn addBootloaderSteps(b: *Builder, boot_target: std.build.Target) !*GetFileSizeS
 
     //bin.installRaw("bootloader.raw");
     //const bin_install = b.addInstallRaw(bin, "bootloader.raw");
-    const bin_install = @import("InstallRawStep.zig").create(b, bin, "bootloader.raw", .bin);
+    const bin_install = std.build.InstallRawStep.create(b, bin, "bootloader.raw", .bin);
     // TODO: remove this workaround
     bin_install.dest_dir = .prefix;
 
