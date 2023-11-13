@@ -1,5 +1,8 @@
 //! This build.zig file just ensures that config.zig
 //! exists, then re-invokes zig build with the buildconfigured.zig
+
+// tested with zig version 0.9.1
+
 const std = @import("std");
 const builtin = @import("builtin");
 const Builder = std.build.Builder;

@@ -34,7 +34,7 @@ pub fn build(b: *Builder) !void {
     const boot_target = blk: {
         var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
         if (cpu_arch == .x86_64 or cpu_arch == .i386) {
-            break :blk std.build.Target{
+            break :blk std.zig.CrossTarget{
                 .cpu_arch = .i386,
                 .os_tag = .freestanding,
                 .abi = .code16,
@@ -70,7 +70,7 @@ pub fn build(b: *Builder) !void {
 
             // TODO: in this change, override_dest_dir should affect installRaw
             //       https://github.com/ziglang/zig/pull/9975
-            const install = b.addInstallRaw(kernel, "kernel.raw");
+            const install = b.addInstallRaw(kernel, "kernel.raw", .{});
             install.dest_dir = .prefix; // hack, this currently messes up the uninstall step
 
             const install_elf = b.addInstallArtifact(kernel);
@@ -151,7 +151,7 @@ fn addBochsStep(b: *Builder, image_file: []const u8) !void {
     b.step("bochs", "Run maros in the Bochs VM").dependOn(&bochs.step);
 }
 
-fn addBootloaderSteps(b: *Builder, boot_target: std.build.Target) !*GetFileSizeStep {
+fn addBootloaderSteps(b: *Builder, boot_target: std.zig.CrossTarget) !*GetFileSizeStep {
     // compile this separately so that it can have a different release mode
     // it has to fit inside 446 bytes
     const use_zig_bootsector = if (b.option(bool, "zigboot", "enable experimental zig bootsector")) |o| o else false;
@@ -187,7 +187,9 @@ fn addBootloaderSteps(b: *Builder, boot_target: std.build.Target) !*GetFileSizeS
 
     //bin.installRaw("bootloader.raw");
     //const bin_install = b.addInstallRaw(bin, "bootloader.raw");
-    const bin_install = std.build.InstallRawStep.create(b, bin, "bootloader.raw", .bin);
+    const bin_install = std.build.InstallRawStep.create(b, bin, "bootloader.raw", .{
+        .format = .bin,
+    });
     // TODO: remove this workaround
     bin_install.dest_dir = .prefix;
 
@@ -368,7 +370,7 @@ const GenerateCombinedToolsSourceStep = struct {
 
 fn addUserSteps(
     b: *Builder,
-    target: std.build.Target,
+    target: std.zig.CrossTarget,
     mode: std.builtin.Mode,
     config: *const Config,
     symlinker: symlinks.Symlinker,

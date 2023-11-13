@@ -21,7 +21,7 @@ pub fn maros_tool_main(all_args: [:null] ?[*:0]u8) !u8 {
         var new_args_len: usize = 0;
         var i: usize = 0;
         while (i < args.len) : (i += 1) {
-            const arg = std.mem.spanZ(args[i].?);
+            const arg = std.mem.span(args[i].?);
             if (arg[0] != '-') {
                 args[new_args_len] = arg;
                 new_args_len += 1;

@@ -82,7 +82,7 @@ const win32 = if (builtin.os.tag == .windows) struct {
     pub const PAGE_READWRITE = 0x04;
     pub extern "KERNEL32" fn CreateFileMappingW(
         hFile: ?std.os.windows.HANDLE,
-        lpFileMappingAttributes: ?*c_void,
+        lpFileMappingAttributes: ?*anyopaque,
         flProtect: u32,
         dwMaximumSizeHigh: u32,
         dwMaximumSizeLow: u32,
@@ -98,6 +98,6 @@ const win32 = if (builtin.os.tag == .windows) struct {
         dwNumberOfBytesToMap: usize,
     ) callconv(std.os.windows.WINAPI) ?[*]align(std.mem.page_size) u8;
     pub extern "KERNEL32" fn UnmapViewOfFile(
-        lpBaseAddress: ?*const c_void,
+        lpBaseAddress: ?*const anyopaque,
     ) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
 };
