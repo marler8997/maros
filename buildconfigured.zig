@@ -94,7 +94,8 @@ pub fn build(b: *Builder) !void {
 // kernel comand line and kernel image locations
 // the bootloader should be enhanced to not need these hard-codings
 const bootloader_reserve_sector_count = 16;
-const bootloader_reserve_len = 512 * bootloader_reserve_sector_count;
+const sector_len = 512;
+const bootloader_reserve_len = sector_len * bootloader_reserve_sector_count;
 
 fn addQemuStep(b: *Builder, image_file: []const u8) !void {
     var args = std.ArrayList([]const u8).init(b.allocator);
@@ -292,6 +293,51 @@ fn hasDependency(step: *const std.build.Step, dep_candidate: *const std.build.St
     return false;
 }
 
+const InstallKernelCmdlineStep = struct {
+    step: std.build.Step,
+    alloc_image_step: *AllocImageStep,
+    cmdline: []const u8,
+    pub fn init(
+        b: *Builder,
+        alloc_image_step: *AllocImageStep,
+        cmdline: []const u8,
+    ) InstallKernelCmdlineStep {
+        if (cmdline.len > sector_len - 1) std.debug.panic(
+            "kernel cmdline ({} bytes) is too long ({} bytes max) for the crytal bootloader",
+            .{ cmdline.len, sector_len - 1 },
+        );
+
+        var result = .{
+            .step = std.build.Step.init(.custom, "install kernel cmdline to image", b.allocator, make),
+            .alloc_image_step = alloc_image_step,
+            .cmdline = cmdline,
+        };
+        result.step.dependOn(&alloc_image_step.step);
+        return result;
+    }
+    fn make(step: *std.build.Step) !void {
+        const self = @fieldParentPtr(InstallKernelCmdlineStep, "step", step);
+
+        const image_file = try std.fs.cwd().openFile(self.alloc_image_step.image_file, .{ .write = true });
+        defer image_file.close();
+
+        const kernel_cmdline_off = getKernelCmdlineSector() * sector_len;
+        const end = kernel_cmdline_off + sector_len;
+
+        const mapped_image = try MappedFile.init(image_file, end, .read_write);
+        defer mapped_image.deinit();
+        const dest = mapped_image.getPtr()[kernel_cmdline_off..end];
+        std.debug.assert(dest.len >= self.cmdline.len + 1);
+        if (std.mem.eql(u8, dest[0..self.cmdline.len], self.cmdline) and dest[self.cmdline.len] == 0) {
+            std.log.debug("install-kernel-cmdline: already done", .{});
+        } else {
+            @memcpy(dest.ptr, self.cmdline.ptr, self.cmdline.len);
+            dest[self.cmdline.len] = 0;
+            std.log.debug("install-kernel-cmdline: done", .{});
+        }
+    }
+};
+
 const InstallKernelStep = struct {
     step: std.build.Step,
     kernel_image_size_step: *GetFileSizeStep,
@@ -317,7 +363,7 @@ const InstallKernelStep = struct {
         const mapped_kernel = try MappedFile.init(kernel_file, kernel_len, .read_only);
         defer mapped_kernel.deinit();
 
-        const kernel_off = getKernelSector() * 512;
+        const kernel_off = getKernelSector() * sector_len;
 
         const image_file = try std.fs.cwd().openFile(self.alloc_image_step.image_file, .{ .write = true });
         defer image_file.close();
@@ -512,6 +558,9 @@ fn dumpHex(writer: anytype, mem: [*]const u8, width: usize, height: usize) !void
 }
 
 // TODO: this will probably take the bootloader size in the future
+fn getKernelCmdlineSector() u32 {
+    return bootloader_reserve_sector_count;
+}
 fn getKernelSector() u32 {
     return bootloader_reserve_sector_count + 1; // +1 for kernel command line
 }
@@ -636,6 +685,13 @@ fn addImageSteps(
         partition_step.step.dependOn(&alloc_image_step.step);
         b.getInstallStep().dependOn(&partition_step.step);
         b.step("partition", "Partition the image (depends on alloc-image)").dependOn(&partition_step.step);
+    }
+
+    {
+        const install = try b.allocator.create(InstallKernelCmdlineStep);
+        install.* = InstallKernelCmdlineStep.init(b, alloc_image_step, config.kernelCommandLine orelse "");
+        b.getInstallStep().dependOn(&install.step);
+        b.step("install-kernel-cmdline", "Install kernel cmdline to image").dependOn(&install.step);
     }
 
     {
