@@ -383,6 +383,78 @@ const InstallKernelStep = struct {
     }
 };
 
+const InstallRootfsStep = struct {
+    step: std.build.Step,
+    kernel_image_size_step: *GetFileSizeStep,
+    alloc_image_step: *AllocImageStep,
+    image_file: []const u8,
+    image_len: u64,
+    pub fn init(
+        b: *Builder,
+        kernel_image_size_step: *GetFileSizeStep,
+        alloc_image_step: *AllocImageStep,
+        image_len: u64,
+    ) InstallRootfsStep {
+        var result = .{
+            .step = std.build.Step.init(.custom, "install rootfs to image", b.allocator, make),
+            .kernel_image_size_step = kernel_image_size_step,
+            .alloc_image_step = alloc_image_step,
+            .image_file = b.getInstallPath(.prefix, "rootfs.ext3"),
+            .image_len = image_len,
+        };
+        result.step.dependOn(&kernel_image_size_step.step);
+        result.step.dependOn(&alloc_image_step.step);
+        return result;
+    }
+    fn make(step: *std.build.Step) !void {
+        const self = @fieldParentPtr(InstallRootfsStep, "step", step);
+
+        //const kernel_image_size = self.kernel_image_size_step.getResultingSize(step);
+        //const kernel_off = getKernelSector() * sector_len;
+
+        // allocate ext3 image file
+        {
+            if (std.fs.path.dirname(self.image_file)) |dirname| {
+                try std.fs.cwd().makePath(dirname);
+            }
+            const file = try std.fs.cwd().createFile(self.image_file, .{ .truncate = false });
+            defer file.close();
+            const pos = try file.getEndPos();
+            if (pos == self.image_len) {
+                std.log.debug("rootfs: image file already allocated ({} bytes, {s})", .{self.image_len, self.image_file});
+            } else {
+                std.log.debug("rootfs: allocating image file ({} bytes, {s})", .{self.image_len, self.image_file});
+                try file.setEndPos(self.image_len);
+            }
+        }
+
+
+
+        //const part1_sector_off: u32 = getKernelSector() + downcast(
+        //    u32, self.config.getMinSectorsToHold(.{.value=kernel_image_size,.unit=.byte}), "kernel sector count"
+        //);
+        //const part1_sector_cnt = downcast(u32, self.config.getMinSectorsToHold(self.config.rootfsPart.size), "MBR part1 sector count");
+        //const part2_sector_off = part1_sector_off + part1_sector_cnt;
+
+        // !!!
+
+        //const image_file = try std.fs.cwd().openFile(self.alloc_image_step.image_file, .{ .write = true });
+        //defer image_file.close();
+        //const mapped_image = try MappedFile.init(image_file, kernel_off + kernel_len, .read_write);
+        //defer mapped_image.deinit();
+
+        //const kernel_ptr = mapped_kernel.getPtr();
+        //const image_ptr = mapped_image.getPtr();
+        //const dest = image_ptr + kernel_off;
+        //if (std.mem.eql(u8, dest[0..kernel_len], kernel_ptr[0..kernel_len])) {
+        //std.log.debug("install-kernel: already done", .{});
+        //} else {
+        //@memcpy(dest, kernel_ptr, kernel_len);
+        //std.log.debug("install-kernel: done", .{});
+        //}
+    }
+};
+
 const GenerateCombinedToolsSourceStep = struct {
     step: std.build.Step,
     builder: *Builder,
@@ -699,6 +771,13 @@ fn addImageSteps(
         install_kernel_step.* = InstallKernelStep.init(b, kernel_image_size_step, alloc_image_step);
         b.getInstallStep().dependOn(&install_kernel_step.step);
         b.step("install-kernel", "Install kernel to image").dependOn(&install_kernel_step.step);
+    }
+
+    {
+        const install = try b.allocator.create(InstallRootfsStep);
+        install.* = InstallRootfsStep.init(b, kernel_image_size_step, alloc_image_step, config.rootfsPart.size.byteValue());
+        b.getInstallStep().dependOn(&install.step);
+        b.step("install-rootfs", "Install rootfs to image").dependOn(&install.step);
     }
 }
 
