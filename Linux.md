@@ -3,23 +3,23 @@
 
 This is a quick guide to configure/build linux.
 
-All the tools to build linux should have been installed when you ran:
+#### Install build tools:
 ```
-./build.d installTools
-```
-
-`build.d` can also automatically clone the kernel if it is configured:
-```
-./build.d cloneKernel
+$ sudo apt install git fakeroot build-essential ncurses-dev xz-utils libssl-dev bc libelf-dev flex bison gcc make nasm
 ```
 
-Make srue to checkout the correct commit/tag.  If you want the latest stable release you can find it by running:
+#### Clone the kernel repo
 ```
-git tag -l | less
+$ git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git linux-stable
+```
+
+Make sure to checkout the correct commit/tag.  If you want the latest stable release you can find it by running:
+```
+git -C linux-stable tag -l | sort
 ```
 once you've identified the latest release check it out using:
 ```
-git checkout <tag> -b <tag>
+git -C linux-stable checkout <tag> -b <tag>
 ```
 
 # Building with Nix
@@ -30,32 +30,31 @@ nix-shell -p gcc openssl libelf bc flex bison
 
 ### configure
 
-from inside the linux repo:
 ```
 # you can start with the default configuration like this
-make ARCH=x86_64 x86_64_defconfig
+make -C linux-stable ARCH=x86_64 x86_64_defconfig
 
 # OR you can start with your current host config by copying it:
-cp /boot/config-$(uname -r) .config
+cp /boot/config-$(uname -r) linux-stable/.config
 
 # if you copied your own config, you can normalize it by running
-make defconfig
+make -C linux-stable defconfig
 
 # To make any changes you can use the console gui (ncurses)
 # by running
-make menuconfig
+make -C linux-stable menuconfig
 
 # Note: you can also use this interactive command line tool that
 #       will ask you a thousand questions:
-make config
+make -C linux-stable config
 
 # there is also
-make xconfig
-make gconfig
+make -C linux-stable xconfig
+make -C linux-stable gconfig
 ```
 * compile the kernel
 ```
-make -j<cores-to-use>
+make -C linux-stable -j$(nproc)
 
 # note: you can run 'nproc --all' to get your core count
 ```
