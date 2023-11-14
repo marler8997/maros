@@ -11,7 +11,8 @@ dx_fmt = 20;
 bx_fmt = 16;
 
 SECTIONS {
-    bootloader_stage2_sector_count = (SIZEOF(bootloader) - 512) / 512;
+    bootloader_stage2_len = SIZEOF(bootloader) - 512;
+    bootloader_stage2_sector_count = (bootloader_stage2_len + 511) / 512;
 
     . = ORIGIN(ram);
     bootloader : {
