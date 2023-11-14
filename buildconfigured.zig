@@ -43,10 +43,24 @@ pub fn build(b: *Builder) !void {
         std.log.err("unhandled target", .{});
         std.os.exit(0xff);
     };
+    const userspace_target = blk: {
+        var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
+        if (cpu_arch == .x86_64) {
+            break :blk std.zig.CrossTarget{
+                .cpu_arch = .x86_64,
+                .os_tag = switch (config.kernel) {
+                    .linux => .linux,
+                    .maros => .freestanding,
+                },
+            };
+        }
+        std.log.err("unhandled target", .{});
+        std.os.exit(0xff);
+    };
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const user_step = try addUserSteps(b, target, optimize, config, symlinker);
+    const user_step = try addUserSteps(b, userspace_target, optimize, config, symlinker);
 
     const alloc_image_step = try b.allocator.create(AllocImageStep);
     alloc_image_step.* = AllocImageStep.init(b, config.imageSize.byteValue());
