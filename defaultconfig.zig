@@ -9,11 +9,10 @@ pub fn makeConfig() !Config {
         // kernel someOtherKernel...
         // kernel linuxStable
         // kernel linux3.2
-        //.kernelPath = "linux_stable",
         //.kernelRepo = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git",
         .kernel = .{
 //            .linux = .{
-//                .image = "linux_stable/arch/x86/boot/bzImage",
+//                .image = "linux/arch/x86/boot/bzImage",
 //            },
             .maros = .{},
         },

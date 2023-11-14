@@ -8,53 +8,66 @@ This is a quick guide to configure/build linux.
 $ sudo apt install git fakeroot build-essential ncurses-dev xz-utils libssl-dev bc libelf-dev flex bison gcc make nasm
 ```
 
-#### Clone the kernel repo
+### Get the source
+
+##### Option 1: download tarball
+
+```sh
+$ curl https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.1.tar.xz -o linux.tar.xz
+$ tar xf linux.tar.xz
+$ ln -s linux-6.6.1 linux
 ```
-$ git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git linux-stable
+
+Also a good idea to source control with: `git init && git add . && git commit -m "linux"`.
+
+##### Option 2: git
+
+```
+$ git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git linux
 ```
 
 Make sure to checkout the correct commit/tag.  If you want the latest stable release you can find it by running:
 ```
-git -C linux-stable tag -l | sort
+git -C linux tag -l | sort
 ```
 once you've identified the latest release check it out using:
 ```
-git -C linux-stable checkout <tag> -b <tag>
+git -C linux checkout <tag> -b <tag>
 ```
 
 # Building with Nix
 
 ```
-nix-shell -p gcc openssl libelf bc flex bison
+nix-shell -p gcc openssl elfutils bc flex bison
 ```
 
 ### configure
 
 ```
 # you can start with the default configuration like this
-make -C linux-stable ARCH=x86_64 x86_64_defconfig
+make -C linux ARCH=x86_64 x86_64_defconfig
 
 # OR you can start with your current host config by copying it:
-cp /boot/config-$(uname -r) linux-stable/.config
+cp /boot/config-$(uname -r) linux/.config
 
 # if you copied your own config, you can normalize it by running
-make -C linux-stable defconfig
+make -C linux defconfig
 
 # To make any changes you can use the console gui (ncurses)
 # by running
-make -C linux-stable menuconfig
+make -C linux menuconfig
 
 # Note: you can also use this interactive command line tool that
 #       will ask you a thousand questions:
-make -C linux-stable config
+make -C linux config
 
 # there is also
-make -C linux-stable xconfig
-make -C linux-stable gconfig
+make -C linux xconfig
+make -C linux gconfig
 ```
 * compile the kernel
 ```
-make -C linux-stable -j$(nproc)
+make -C linux -j$(nproc)
 
 # note: you can run 'nproc --all' to get your core count
 ```
