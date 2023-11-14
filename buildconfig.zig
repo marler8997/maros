@@ -69,6 +69,14 @@ const KernelConfig = union(enum) {
     },
 };
 
+pub fn getMinSectorsToHold(sector_len: u64, required_len: u64) u64 {
+    var count = @divTrunc(required_len, sector_len);
+    if (required_len % sector_len != 0) {
+        count += 1;
+    }
+    return count;
+}
+
 pub const Config = struct {
     kernel: KernelConfig,
     kernelCommandLine: ?[]const u8,
@@ -81,15 +89,6 @@ pub const Config = struct {
 
     combine_tools: bool,
 
-    pub fn getMinSectorsToHold(self: Config, required_size: MemorySize) u64 {
-        const required_len_bytes = required_size.byteValue();
-        const sector_len = self.sectorSize.byteValue();
-        var sectors_needed = required_len_bytes / sector_len;
-        if (required_len_bytes % sector_len > 0) {
-            sectors_needed += 1;
-        }
-        return sectors_needed;
-    }
 //    auto mapImage(size_t offset, size_t length, Flag!"writeable" writeable) const
 //    {
 //        mixin tempCString!("imageFileTempCStr", "imageFile");
