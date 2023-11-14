@@ -1,13 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const ChsAddress = packed struct {
-    value: [3]u8,
-
-    pub const zeros = ChsAddress { .value = [_]u8 { 0 } ** 3 };
+pub const ChsAddress = extern struct {
+    bytes: [3]u8,
+    pub const zeros = ChsAddress { .bytes = [3]u8{ 0, 0, 0 } };
 };
-// not working because of "Incorrect byte offset and struct size for packed structs" https://github.com/ziglang/zig/issues/2627
-//comptime { std.debug.assert(@sizeOf(ChsAddress) == 3); }
+comptime { std.debug.assert(@sizeOf(ChsAddress) == 3); }
 
 pub const PartitionType = enum(u8) {
     empty                   = 0x00,
@@ -36,14 +34,11 @@ pub fn LittleEndianOf(comptime T: type) type {
 //    https://github.com/ziglang/zig/issues/9942
 //    https://github.com/ziglang/zig/issues/9943
 pub const PartitionEntry = extern struct {
+    status: PartitionStatus,
+    first_sector_chs: ChsAddress align(1),
     // workaround issue "Incorrect byte offset and struct size for packed structs" https://github.com/ziglang/zig/issues/2627
-    //status: PartitionStatus,
-    //first_sector_chs: ChsAddress,
-    status_and_first_sector_chs: [4]u8,
-    // workaround issue "Incorrect byte offset and struct size for packed structs" https://github.com/ziglang/zig/issues/2627
-    //part_type: PartitionType,
-    //last_sector_chs: ChsAddress,
-    part_type_and_last_sector_chs: [4]u8,
+    part_type: PartitionType,
+    last_sector_chs: ChsAddress align(1),
     first_sector_lba: LittleEndianOf(u32),
     sector_count: LittleEndianOf(u32),
 
@@ -60,7 +55,7 @@ pub const bootstrap_len = 446;
 //    https://github.com/ziglang/zig/issues/9943
 pub const Sector = extern struct {
     bootstrap: [bootstrap_len]u8,
-    partitions: [4]PartitionEntry,
-    boot_sig: [2]u8,
+    partitions: [4]PartitionEntry align(2),
+    boot_sig: [2]u8 align(2),
 };
 comptime { std.debug.assert(@sizeOf(Sector) == 512); }

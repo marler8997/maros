@@ -34,7 +34,6 @@ const util = @import("util.zig");
 
 
 pub fn maros_tool_main(args: [:null] ?[*:0]u8) !u8 {
-// extern (C) int main(uint argc, SentinelPtr!cstring argv, SentinelPtr!cstring parentEnvp)
     try io.printStdout("init process started with {} arguments:\n", .{args.len});
     try util.dumpProgramInput(args);
 //

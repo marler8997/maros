@@ -3,7 +3,7 @@ const tools = @import("tools.gen.zig");
 const io = @import("io.zig");
 
 pub fn main() u8 {
-    const args = @bitCast([:null] ?[*:0]u8, std.os.argv);
+    const args: [:null] ?[*:0]u8 = @ptrCast(std.os.argv);
     const arg0 = std.fs.path.basename(std.mem.span(args[0].?));
     //
     // TODO: would a comptimeStringMap be better here??

@@ -54,14 +54,14 @@ pub fn maros_tool_main(all_args: [:null] ?[*:0]u8) !u8 {
         const result = std.os.linux.mount(
             source,
             target,
-            std.meta.assumeSentinel(fstype.ptr, 0),
+            @ptrCast(fstype.ptr),
             0,
-            @ptrToInt(mount_options)
+            @intFromPtr(mount_options),
         );
         switch (std.os.errno(result)) {
             .SUCCESS => return 0,
             else => |e| {
-                std.log.warn("failed to mount as type \"{s}\" with {}", .{fstype, e});
+                std.log.warn("failed to mount as type \"{s}\" with {s}", .{fstype, @tagName(e)});
             },
         }
     }
@@ -78,13 +78,13 @@ const FsTypeIterator = struct {
         const fstype = self.str;
         while (true) {
             if (self.str[0] == ',') {
-                const result = fstype[0 .. @ptrToInt(self.str) - @ptrToInt(fstype)];
+                const result = fstype[0 .. @intFromPtr(self.str) - @intFromPtr(fstype)];
                 self.str += 1;
                 return result;
             }
             self.str += 1;
             if (self.str[0] == 0) {
-                return fstype[0 .. @ptrToInt(self.str) - @ptrToInt(fstype)];
+                return fstype[0 .. @intFromPtr(self.str) - @intFromPtr(fstype)];
             }
         }
     }

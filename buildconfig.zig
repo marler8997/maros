@@ -24,7 +24,7 @@ pub const MemorySize = struct {
     unit: MemoryUnit,
     pub fn nonZero(self: MemorySize) bool { return self.value != 0; }
     pub fn byteValue(self: MemorySize) u64 {
-        return @intCast(u64, self.value) << self.unit.getInfo().byteShift;
+        return self.value << self.unit.getInfo().byteShift;
     }
 
     fn formatQemu(
@@ -128,6 +128,8 @@ pub fn parseMemorySize(size: []const u8) !MemorySize {
             break :blk MemoryUnit.gigaByte;
         if (std.mem.eql(u8, unit_str, "M"))
             break :blk MemoryUnit.megaByte;
+        if (std.mem.eql(u8, unit_str, "K"))
+            break :blk MemoryUnit.kiloByte;
         if (std.mem.eql(u8, unit_str, "B"))
             break :blk MemoryUnit.byte;
         return error.UnknownUnit;

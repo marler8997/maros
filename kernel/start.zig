@@ -28,7 +28,7 @@ fn biosTeletypeOutString(str: [*:0]const u8) void {
     }
 }
 
-pub export fn _start() align(16) linksection(".text.start") callconv(.Naked) noreturn {
+pub export fn _start() align(16) linksection(".text.start") noreturn {
     // NOTE: this function is not working yet for some reason
     //biosTeletypeOutString("Hi!\r\n");
     biosTeletypeOut('H');

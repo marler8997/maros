@@ -19,9 +19,9 @@ pub fn getSymlinkerFromFilesystemTest(
     metadata_dest_path: []const u8
 ) !Symlinker {
     // for some reason, build.zig make cache_root a relative path??
-    const cache_root_full = b.pathFromRoot(b.cache_root);
+    const cache_root_full = b.pathFromRoot(b.cache_root.path.?);
     defer b.allocator.free(cache_root_full);
-    try b.makePath(cache_root_full);
+    try std.fs.cwd().makePath(cache_root_full);
 
     var cache_root = try std.fs.cwd().openDir(cache_root_full, .{});
     defer cache_root.close();
@@ -77,7 +77,12 @@ pub const InstallSymlinkStep = struct {
     ) *InstallSymlinkStep {
         const result = builder.allocator.create(InstallSymlinkStep) catch unreachable;
         result.* = .{
-            .step = std.build.Step.init(.custom, "install symlink", builder.allocator, make),
+            .step = std.build.Step.init(.{
+                .id = .custom,
+                .name = "install symlink",
+                .owner = builder,
+                .makeFn = make,
+            }),
             .builder = builder,
             .symlink_target = symlink_target,
             .dir = dir,
@@ -86,7 +91,8 @@ pub const InstallSymlinkStep = struct {
         return result;
     }
 
-    fn make(step: *std.build.Step) !void {
+    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+        _ = prog_node;
         const self = @fieldParentPtr(InstallSymlinkStep, "step", step);
         const full_dest_path = self.builder.getInstallPath(self.dir, self.dest_rel_path);
         _ = try updateSymlink(self.symlink_target, full_dest_path, .{});
@@ -125,14 +131,20 @@ pub const InstallMetadataSymlinkStep = struct {
     ) *InstallMetadataSymlinkStep {
         const result = install_symlink_step.builder.allocator.create(InstallMetadataSymlinkStep) catch unreachable;
         result.* = .{
-            .step = std.build.Step.init(.custom, "install metadata symlink", install_symlink_step.builder.allocator, make),
+            .step = std.build.Step.init(.{
+                .id = .custom,
+                .name = "install metadata symlink",
+                .owner = install_symlink_step.builder,
+                .makeFn = make,
+            }),
             .install_symlink_step = install_symlink_step,
             .metadata_file = metadata_file,
         };
         return result;
     }
 
-    fn make(step: *std.build.Step) !void {
+    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+        _ = prog_node;
         const self = @fieldParentPtr(InstallMetadataSymlinkStep, "step", step);
         const full_dest_path = self.install_symlink_step.builder.getInstallPath(self.install_symlink_step.dir, self.install_symlink_step.dest_rel_path);
         std.log.info("TODO: write symlink '{s}' -> '{s}' to metadata file '{s}'", .{
