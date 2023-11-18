@@ -5,13 +5,16 @@ const Pkg = std.build.Pkg;
 
 const buildconfig = @import("buildconfig.zig");
 const Config = buildconfig.Config;
+const Filesystem = buildconfig.Filesystem;
 const MemoryUnit = buildconfig.MemoryUnit;
 const MemorySize = buildconfig.MemorySize;
 
 const MappedFile = @import("MappedFile.zig");
 const mbr = @import("mbr.zig");
 
+const util = @import("build/util.zig");
 const symlinks = @import("build/symlinks.zig");
+const e2tools = @import("build/e2tools.zig");
 
 pub fn build(b: *Builder) !void {
     const config = try b.allocator.create(Config);
@@ -473,6 +476,7 @@ const InstallRootfsStep = struct {
     image_file: []const u8,
     image_len: u64,
     sector_len: u32,
+    fstype: Filesystem,
     pub fn create(
         b: *Builder,
         kernel_image_size_step: *GetFileSizeStep,
@@ -480,6 +484,7 @@ const InstallRootfsStep = struct {
         image_len: u64,
         user_step: *std.Build.Step,
         sector_len: u32,
+        fstype: Filesystem,
     ) *InstallRootfsStep {
         const result = b.allocator.create(InstallRootfsStep) catch @panic("OOM");
         result.* = .{
@@ -491,9 +496,10 @@ const InstallRootfsStep = struct {
             }),
             .kernel_image_size_step = kernel_image_size_step,
             .alloc_image_step = alloc_image_step,
-            .image_file = b.getInstallPath(.prefix, "rootfs.ext3"),
+            .image_file = b.getInstallPath(.prefix, b.fmt("rootfs.{s}", .{fstype.ext()})),
             .image_len = image_len,
             .sector_len = sector_len,
+            .fstype = fstype,
         };
         result.step.dependOn(&kernel_image_size_step.step);
         result.step.dependOn(&alloc_image_step.step);
@@ -520,16 +526,20 @@ const InstallRootfsStep = struct {
             }
         }
 
-        const alloc = step.owner.allocator;
-        try makefs(alloc, self.image_file, self.image_len);
-        try makeDir(alloc, self.image_file, "dev" , 0o775);
-        try makeDir(alloc, self.image_file, "proc", 0o555);
-        try makeDir(alloc, self.image_file, "sys" , 0o555);
-        try makeDir(alloc, self.image_file, "var" , 0o755);
-        try makeDir(alloc, self.image_file, "tmp" , 0o777);
-        try makeDir(alloc, self.image_file, "sbin" , 0o777);
-        const rootfs_bin = step.owner.pathJoin(&.{ step.owner.install_path, rootfs_bin_sub_path });
-        try installDir(alloc, self.image_file, rootfs_bin, "sbin");
+        {
+            var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena_instance.deinit();
+            const alloc = arena_instance.allocator();
+            try makefs(self.fstype, alloc, self.image_file, self.image_len);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "dev" , 0o775);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "proc", 0o555);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "sys" , 0o555);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "var" , 0o755);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "tmp" , 0o777);
+            try fsimage.makeDir(self.fstype, alloc, self.image_file, "sbin" , 0o777);
+            const rootfs_bin = step.owner.pathJoin(&.{ step.owner.install_path, rootfs_bin_sub_path });
+            try installDir(self.fstype, alloc, self.image_file, rootfs_bin, "sbin");
+        }
 
         //
         // TODO: move this code to another more general InstallFileToImageStep
@@ -563,137 +573,45 @@ const InstallRootfsStep = struct {
         }
     }
 
-    fn makefs(allocator: std.mem.Allocator, image_file: []const u8, len: usize) !void {
-        const block_size = 4096;
+    fn makefs(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, len: usize) !void {
+        switch (fs) {
+            .ext => {
+                const block_size = 4096;
 
-        var block_size_string_buf: [20]u8 = undefined;
-        const block_size_string = std.fmt.bufPrint(&block_size_string_buf, "{}", .{block_size}) catch unreachable;
+                var block_size_string_buf: [20]u8 = undefined;
+                const block_size_string = std.fmt.bufPrint(&block_size_string_buf, "{}", .{block_size}) catch unreachable;
 
-        const block_count = @divTrunc(len, block_size);
-        if (block_count * block_size != len) {
-            std.log.warn("rootfs len {} is not a multiple of the block size {}", .{len, block_size});
-        }
-        var block_count_string_buf: [20]u8 = undefined;
-        const block_count_string = std.fmt.bufPrint(&block_count_string_buf, "{}", .{block_count}) catch unreachable;
+                const block_count = @divTrunc(len, block_size);
+                if (block_count * block_size != len) {
+                    std.log.warn("rootfs len {} is not a multiple of the block size {}", .{len, block_size});
+                }
+                var block_count_string_buf: [20]u8 = undefined;
+                const block_count_string = std.fmt.bufPrint(&block_count_string_buf, "{}", .{block_count}) catch unreachable;
 
-        const result = try exec(allocator, &.{
-            "mkfs.ext3",
-            "-F",
-            "-b", block_size_string,
-            image_file,
-            block_count_string,
-        });
-        const failed = switch (result.term) {
-            .Exited => |code| code != 0,
-            else => true,
-        };
-        if (failed) {
-            std.log.err(
-                "mkfs.ext3 for for rootfs image '{s}' {}, stdout='{s}' stderr='{s}'",
-                .{image_file, fmtTerm(result.term), result.stdout, result.stderr},
-            );
-            return error.MakeFailed;
-        }
-    }
-
-    fn makeDir(allocator: std.mem.Allocator, image_file: []const u8, sub_path: []const u8, perm: u9) !void {
-        var perm_string_buf: [20]u8 = undefined;
-        const perm_string = std.fmt.bufPrint(&perm_string_buf, "{o}", .{perm}) catch unreachable;
-        const path_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, sub_path}) catch unreachable;
-        defer allocator.free(path_arg);
-        const result = try exec(allocator, &.{
-            "e2mkdir",
-            "-G", "0",
-            "-O", "0",
-            "-P", perm_string,
-            path_arg,
-        });
-        const failed = switch (result.term) {
-            .Exited => |code| code != 0,
-            else => true,
-        };
-        if (failed) {
-            std.log.err(
-                "e2mkdir for directory '{s}' {}, stdout='{s}', stderr='{s}'",
-                .{sub_path, fmtTerm(result.term), result.stdout, result.stderr},
-            );
-            return error.MakeFailed;
+                const result = try util.exec(allocator, &.{
+                    "mkfs.ext3",
+                    "-F",
+                    "-b", block_size_string,
+                    image_file,
+                    block_count_string,
+                });
+                const failed = switch (result.term) {
+                    .Exited => |code| code != 0,
+                    else => true,
+                };
+                if (failed) {
+                    std.log.err(
+                        "mkfs.ext3 for for rootfs image '{s}' {}, stdout='{s}' stderr='{s}'",
+                        .{image_file, util.fmtTerm(result.term), result.stdout, result.stderr},
+                    );
+                    return error.MakeFailed;
+                }
+            },
+            .fat32 => @panic("todo"),
         }
     }
 
-    fn installFile(allocator: std.mem.Allocator, image_file: []const u8, src: []const u8, dst: []const u8) !void {
-        const dst_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, dst}) catch unreachable;
-        defer allocator.free(dst_arg);
-        const result = try exec(allocator, &.{
-            "e2cp",
-            "-G", "0",
-            "-O", "0",
-            "-p",
-            src,
-            dst_arg,
-        });
-        const failed = switch (result.term) {
-            .Exited => |code| code != 0,
-            else => true,
-        };
-        if (failed) {
-            std.log.err(
-                "e2cp '{s}' '{s}' {}, stdout='{s}', stderr='{s}'",
-                .{src, dst, fmtTerm(result.term), result.stdout, result.stderr},
-            );
-            return error.MakeFailed;
-        }
-    }
-
-    fn installSymLink(allocator: std.mem.Allocator, image_file: []const u8, target_path: []const u8, dst: []const u8) !void {
-        const dst_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, dst}) catch unreachable;
-        defer allocator.free(dst_arg);
-        // NOTE: creating symlinks not implemented so we use a hack
-        //const result = try exec(allocator, &.{
-        //    "e2ln",
-        //    "-s",
-        //    target_path,
-        //    dst_arg,
-        //});
-        //const failed = switch (result.term) {
-        //    .Exited => |code| code != 0,
-        //    else => true,
-        //};
-        //if (failed) {
-        //    std.log.err(
-        //        "e2ln '{s}' '{s}' {}, stdout='{s}', stderr='{s}'",
-        //        .{target_path, dst, fmtTerm(result.term), result.stdout, result.stderr},
-        //    );
-        //    return error.MakeFailed;
-        //}
-        {
-            const tmp_file = try std.fs.cwd().createFile("tmp-symlink", .{});
-            defer tmp_file.close();
-            try tmp_file.writer().writeAll(target_path);
-        }
-        const result = try exec(allocator, &.{
-            "e2cp",
-            "-G", "0",
-            "-O", "0",
-            "-P", "120000", // symlink permissions
-            "tmp-symlink",
-            dst_arg,
-        });
-        const failed = switch (result.term) {
-            .Exited => |code| code != 0,
-            else => true,
-        };
-        if (failed) {
-            std.log.err(
-                "e2cp '{s}' '{s}' {}, stdout='{s}', stderr='{s}'",
-                .{target_path, dst, fmtTerm(result.term), result.stdout, result.stderr},
-            );
-            return error.MakeFailed;
-        }
-        try std.fs.cwd().deleteFile("tmp-symlink");
-    }
-
-    fn installDir(allocator: std.mem.Allocator, image_file: []const u8, src_dir_path: []const u8, dst_dir: []const u8) !void {
+    fn installDir(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, src_dir_path: []const u8, dst_dir: []const u8) !void {
         var src_dir = try std.fs.cwd().openIterableDir(src_dir_path, .{});
         defer src_dir.close();
 
@@ -703,14 +621,14 @@ const InstallRootfsStep = struct {
                 .file => {
                     const entry_path = std.fs.path.join(allocator, &.{src_dir_path, entry.name}) catch @panic("OOM");
                     defer allocator.free(entry_path);
-                    try installFile(allocator, image_file, entry_path, dst_dir);
+                    try fsimage.installFile(fs, allocator, image_file, entry_path, dst_dir);
                 },
                 .sym_link => {
                     var target_buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
                     const target = try src_dir.dir.readLink(entry.name, &target_buf);
                     const dst = std.fs.path.join(allocator, &.{dst_dir, entry.name}) catch @panic("OOM");
                     defer allocator.free(dst);
-                    try installSymLink(allocator, image_file, target, dst);
+                    try fsimage.installSymLink(fs, allocator, image_file, target, dst);
                 },
                 else => @panic("todo"),
             }
@@ -718,36 +636,29 @@ const InstallRootfsStep = struct {
     }
 };
 
-fn exec(allocator: std.mem.Allocator, argv: []const []const u8) !std.ChildProcess.ExecResult {
-    const cmd = try std.Build.Step.allocPrintCmd2(allocator, null, null, argv);
-    defer allocator.free(cmd);
-    std.log.debug("[exec] {s}", .{cmd});
-    return std.ChildProcess.exec(.{
-        .allocator = allocator,
-        .argv = argv,
-    });
-}
-
-fn formatTerm(
-    term: ?std.process.Child.Term,
-    comptime fmt: []const u8,
-    options: std.fmt.FormatOptions,
-    writer: anytype,
-) !void {
-    _ = fmt;
-    _ = options;
-    if (term) |t| switch (t) {
-        .Exited => |code| try writer.print("exited with code {}", .{code}),
-        .Signal => |sig| try writer.print("terminated with signal {}", .{sig}),
-        .Stopped => |sig| try writer.print("stopped with signal {}", .{sig}),
-        .Unknown => |code| try writer.print("terminated for unknown reason with code {}", .{code}),
-    } else {
-        try writer.writeAll("exited with any code");
+const fsimage = struct {
+    fn makeDir(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, sub_path: []const u8, perm: u9) !void {
+        switch (fs) {
+            .ext => try e2tools.makeDir(allocator, image_file, sub_path, perm),
+            .fat32 => @panic("todo"),
+        }
     }
-}
-fn fmtTerm(term: ?std.process.Child.Term) std.fmt.Formatter(formatTerm) {
-    return .{ .data = term };
-}
+
+    fn installFile(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, src: []const u8, dst: []const u8) !void {
+        switch (fs) {
+            .ext => try e2tools.installFile(allocator, image_file, src, dst),
+            .fat32 => @panic("todo"),
+        }
+    }
+
+    fn installSymLink(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, target_path: []const u8, dst: []const u8) !void {
+        switch (fs) {
+            .ext => try e2tools.installSymLink(allocator, image_file, target_path, dst),
+            .fat32 => @panic("todo"),
+        }
+    }
+};
+
 
 const GenerateCombinedToolsSourceStep = struct {
     step: std.build.Step,
@@ -1107,6 +1018,7 @@ fn addImageSteps(
             config.rootfsPart.size.byteValue(),
             user_step,
             @intCast(config.sectorSize.byteValue()),
+            config.rootfsPart.fstype,
         );
         b.getInstallStep().dependOn(&install.step);
         b.step("install-rootfs", "Install rootfs to image").dependOn(&install.step);

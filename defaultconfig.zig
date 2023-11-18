@@ -25,7 +25,7 @@ pub fn makeConfig() !Config {
         //.sectorSize = buildconfig.sizeFromStr("512B"),
         .imageSize = buildconfig.sizeFromStr("18M"),
         .rootfsPart = .{
-            .fstype = "ext4",
+            .fstype = .ext,
             .size = buildconfig.sizeFromStr("5M"),
         },
         .swapSize = buildconfig.sizeFromStr("1M"),

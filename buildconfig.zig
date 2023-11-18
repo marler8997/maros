@@ -55,8 +55,19 @@ pub fn sizeFromStr(comptime str: []const u8) MemorySize {
 //    };
 }
 
+pub const Filesystem = enum {
+    ext,
+    fat32,
+    pub fn ext(self: Filesystem) []const u8 {
+        return switch (self) {
+            .ext => ".ext",
+            .fat32 => ".fat32",
+        };
+    }
+};
+
 const RootfsPart = struct {
-    fstype: []const u8,
+    fstype: Filesystem,
     size: MemorySize,
 };
 
