@@ -1,4 +1,5 @@
 const std = @import("std");
+const Build = std.Build;
 
 pub fn testSymlinkSupport(dir: std.fs.Dir) !bool {
     dir.deleteFile("test-symlink") catch |err| switch (err) {
@@ -14,8 +15,8 @@ pub fn testSymlinkSupport(dir: std.fs.Dir) !bool {
 }
 
 pub fn getSymlinkerFromFilesystemTest(
-    b: *std.build.Builder,
-    metadata_install_dir: std.build.InstallDir,
+    b: *Build,
+    metadata_install_dir: Build.InstallDir,
     metadata_dest_path: []const u8
 ) !Symlinker {
     // for some reason, build.zig make cache_root a relative path??
@@ -28,21 +29,21 @@ pub fn getSymlinkerFromFilesystemTest(
 
     if (try testSymlinkSupport(cache_root))
         return Symlinker.host_supports_symlinks;
-    
+
     return Symlinker{ .host_does_not_support_symlinks = b.getInstallPath(metadata_install_dir, metadata_dest_path) };
 }
 
 pub const Symlinker = union(enum) {
     host_supports_symlinks: void,
     host_does_not_support_symlinks: []const u8,
-    
+
     pub fn createInstallSymlinkStep(
         self: Symlinker,
-        builder: *std.build.Builder,
+        builder: *Build,
         symlink_target: []const u8,
-        dir: std.build.InstallDir,
+        dir: Build.InstallDir,
         dest_rel_path: []const u8,
-    ) *std.build.Step {
+    ) *Build.Step {
         const install_symlink_step = InstallSymlinkStep.create(
             builder,
             symlink_target,
@@ -63,21 +64,21 @@ pub const Symlinker = union(enum) {
 };
 
 pub const InstallSymlinkStep = struct {
-    step: std.build.Step,
-    builder: *std.build.Builder,
+    step: Build.Step,
+    builder: *Build,
     symlink_target: []const u8,
-    dir: std.build.InstallDir,
+    dir: Build.InstallDir,
     dest_rel_path: []const u8,
 
     pub fn create(
-        builder: *std.build.Builder,
+        builder: *Build,
         symlink_target: []const u8,
-        dir: std.build.InstallDir,
+        dir: Build.InstallDir,
         dest_rel_path: []const u8,
     ) *InstallSymlinkStep {
         const result = builder.allocator.create(InstallSymlinkStep) catch unreachable;
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install symlink",
                 .owner = builder,
@@ -91,15 +92,19 @@ pub const InstallSymlinkStep = struct {
         return result;
     }
 
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallSymlinkStep, "step", step);
+        const self: *InstallSymlinkStep = @fieldParentPtr("step", step);
         const full_dest_path = self.builder.getInstallPath(self.dir, self.dest_rel_path);
         _ = try updateSymlink(self.symlink_target, full_dest_path, .{});
     }
 
     /// returns: true if the symlink was updated, false if it was already set to the given `target_path`
-    pub fn updateSymlink(target_path: []const u8, sym_link_path: []const u8, flags: std.fs.SymLinkFlags) !bool {
+    pub fn updateSymlink(
+        target_path: []const u8,
+        sym_link_path: []const u8,
+        flags: std.fs.Dir.SymLinkFlags,
+    ) !bool {
         if (std.fs.path.dirname(sym_link_path)) |dirname| {
             try std.fs.cwd().makePath(dirname);
         }
@@ -110,7 +115,7 @@ pub const InstallSymlinkStep = struct {
                 //std.debug.print("symlink '{s}' already points to '{s}'\n", .{ sym_link_path, target_path });
                 return false; // already up-to-date
             }
-            try std.os.unlink(sym_link_path);
+            try std.posix.unlink(sym_link_path);
         } else |e| switch (e) {
             error.FileNotFound => {},
             else => return e,
@@ -121,7 +126,7 @@ pub const InstallSymlinkStep = struct {
 };
 
 pub const InstallMetadataSymlinkStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     install_symlink_step: *InstallSymlinkStep,
     metadata_file: []const u8,
 
@@ -131,7 +136,7 @@ pub const InstallMetadataSymlinkStep = struct {
     ) *InstallMetadataSymlinkStep {
         const result = install_symlink_step.builder.allocator.create(InstallMetadataSymlinkStep) catch unreachable;
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install metadata symlink",
                 .owner = install_symlink_step.builder,
@@ -143,9 +148,9 @@ pub const InstallMetadataSymlinkStep = struct {
         return result;
     }
 
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallMetadataSymlinkStep, "step", step);
+        const self: *InstallMetadataSymlinkStep = @fieldParentPtr("step", step);
         const full_dest_path = self.install_symlink_step.builder.getInstallPath(self.install_symlink_step.dir, self.install_symlink_step.dest_rel_path);
         std.log.info("TODO: write symlink '{s}' -> '{s}' to metadata file '{s}'", .{
             full_dest_path,

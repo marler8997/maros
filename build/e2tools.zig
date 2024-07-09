@@ -6,7 +6,7 @@ pub fn makeDir(allocator: std.mem.Allocator, image_file: []const u8, sub_path: [
     const perm_string = std.fmt.bufPrint(&perm_string_buf, "{o}", .{perm}) catch unreachable;
     const path_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, sub_path}) catch unreachable;
     defer allocator.free(path_arg);
-    const result = try util.exec(allocator, &.{
+    const result = try util.run(allocator, &.{
         "e2mkdir",
         "-G", "0",
         "-O", "0",
@@ -29,7 +29,7 @@ pub fn makeDir(allocator: std.mem.Allocator, image_file: []const u8, sub_path: [
 pub fn installFile(allocator: std.mem.Allocator, image_file: []const u8, src: []const u8, dst: []const u8) !void {
     const dst_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, dst}) catch unreachable;
     defer allocator.free(dst_arg);
-    const result = try util.exec(allocator, &.{
+    const result = try util.run(allocator, &.{
         "e2cp",
         "-G", "0",
         "-O", "0",
@@ -54,7 +54,7 @@ pub fn installSymLink(allocator: std.mem.Allocator, image_file: []const u8, targ
     const dst_arg = std.fmt.allocPrint(allocator, "{s}:{s}", .{image_file, dst}) catch unreachable;
     defer allocator.free(dst_arg);
     // NOTE: creating symlinks not implemented so we use a hack
-    //const result = try util.exec(allocator, &.{
+    //const result = try util.run(allocator, &.{
     //    "e2ln",
     //    "-s",
     //    target_path,
@@ -76,7 +76,7 @@ pub fn installSymLink(allocator: std.mem.Allocator, image_file: []const u8, targ
         defer tmp_file.close();
         try tmp_file.writer().writeAll(target_path);
     }
-    const result = try util.exec(allocator, &.{
+    const result = try util.run(allocator, &.{
         "e2cp",
         "-G", "0",
         "-O", "0",

@@ -45,14 +45,14 @@ pub fn init(file: std.fs.File, len: usize, access: Access) !MappedFile {
         };
         return MappedFile { .data = .{ .mapping = mapping, .ptr = ptr } };
     } else {
-        return MappedFile { .data = .{ .slice = try std.os.mmap(
+        return MappedFile { .data = .{ .slice = try std.posix.mmap(
             null,
             len,
             switch (access) {
-                .read_only => std.os.PROT.READ,
-                .read_write => std.os.PROT.READ | std.os.PROT.WRITE,
+                .read_only => std.posix.PROT.READ,
+                .read_write => std.posix.PROT.READ | std.posix.PROT.WRITE,
             },
-            std.os.MAP.SHARED,
+            .{ .TYPE = .SHARED },
             file.handle,
             0
         )}};
@@ -64,7 +64,7 @@ pub fn deinit(self: MappedFile) void {
         std.debug.assert(0 != win32.UnmapViewOfFile(self.data.ptr));
         std.debug.assert(0 != win32.CloseHandle(self.data.mapping));
     } else {
-        std.os.munmap(self.data.slice);
+        std.posix.munmap(self.data.slice);
     }
 }
 

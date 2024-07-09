@@ -6,10 +6,10 @@ const std = @import("std");
 
 const Nothing = struct {};
 fn stdoutWrite(_: Nothing, bytes: []const u8) std.fs.File.WriteError!usize {
-    return std.os.write(std.os.STDOUT_FILENO, bytes);
+    return std.posix.write(std.posix.STDOUT_FILENO, bytes);
 }
 fn stderrWrite(_: Nothing, bytes: []const u8) std.fs.File.WriteError!usize {
-    return std.os.write(std.os.STDERR_FILENO, bytes);
+    return std.posix.write(std.posix.STDERR_FILENO, bytes);
 }
 pub const StdoutWriter = std.io.Writer(Nothing, std.fs.File.WriteError, stdoutWrite);
 pub const StderrWriter = std.io.Writer(Nothing, std.fs.File.WriteError, stderrWrite);

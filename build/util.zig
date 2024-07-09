@@ -1,11 +1,11 @@
 const std = @import("std");
 const buildlog = std.log.scoped(.build);
 
-pub fn exec(allocator: std.mem.Allocator, argv: []const []const u8) !std.ChildProcess.ExecResult {
+pub fn run(allocator: std.mem.Allocator, argv: []const []const u8) !std.process.Child.RunResult {
     const cmd = try std.Build.Step.allocPrintCmd2(allocator, null, null, argv);
     defer allocator.free(cmd);
     buildlog.debug("[exec] {s}", .{cmd});
-    return std.ChildProcess.exec(.{
+    return std.process.Child.run(.{
         .allocator = allocator,
         .argv = argv,
     });

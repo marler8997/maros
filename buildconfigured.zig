@@ -1,7 +1,6 @@
 const std = @import("std");
+const Build = std.Build;
 const builtin = @import("builtin");
-const Builder = std.build.Builder;
-const Pkg = std.build.Pkg;
 
 const buildconfig = @import("buildconfig.zig");
 const Config = buildconfig.Config;
@@ -16,49 +15,44 @@ const util = @import("build/util.zig");
 const symlinks = @import("build/symlinks.zig");
 const e2tools = @import("build/e2tools.zig");
 
-pub fn build(b: *Builder) !void {
+pub fn build(b: *Build) !void {
     const config = try b.allocator.create(Config);
     config.* = try @import("config.zig").makeConfig();
 
     const symlinker = try symlinks.getSymlinkerFromFilesystemTest(b, .prefix, "rootfs.metadta");
 
-    const target = blk: {
-        var target = b.standardTargetOptions(.{});
-        if (target.os_tag) |os_tag| {
-            if (os_tag != .linux) {
-                std.log.err("unsupported os '{s}', only linux is supported", .{@tagName(os_tag)});
-                std.os.exit(0xff);
-            }
-        } else if (builtin.os.tag != .linux) {
-            target.os_tag = .linux;
-        }
-        break :blk target;
-    };
+    const target = b.standardTargetOptions(.{
+        .default_target = .{
+            .os_tag = .linux
+        },
+    });
+    if (target.result.os.tag != .linux) {
+        std.log.err("unsupported os '{s}', only linux is supported", .{@tagName(target.result.os.tag)});
+        std.process.exit(0xff);
+    }
     const boot_target = blk: {
-        var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
-        if (cpu_arch == .x86_64 or cpu_arch == .x86) {
-            break :blk std.zig.CrossTarget{
+        if (target.result.cpu.arch == .x86_64 or target.result.cpu.arch == .x86) {
+            break :blk b.resolveTargetQuery(std.zig.CrossTarget{
                 .cpu_arch = .x86,
                 .os_tag = .freestanding,
                 .abi = .code16,
-            };
+            });
         }
         std.log.err("unhandled target", .{});
-        std.os.exit(0xff);
+        std.process.exit(0xff);
     };
     const userspace_target = blk: {
-        var cpu_arch = if (target.cpu_arch) |a| a else builtin.target.cpu.arch;
-        if (cpu_arch == .x86_64) {
-            break :blk std.zig.CrossTarget{
+        if (target.result.cpu.arch == .x86_64) {
+            break :blk b.resolveTargetQuery(std.Target.Query{
                 .cpu_arch = .x86_64,
                 .os_tag = switch (config.kernel) {
                     .linux => .linux,
                     .maros => .freestanding,
                 },
-            };
+            });
         }
         std.log.err("unhandled target", .{});
-        std.os.exit(0xff);
+        std.process.exit(0xff);
     };
 
     const optimize = b.standardOptimizeOption(.{});
@@ -74,18 +68,18 @@ pub fn build(b: *Builder) !void {
     const kernel_image_size_step = try b.allocator.create(GetFileSizeStep);
     switch (config.kernel) {
         .linux => |kernel| {
-            kernel_image_size_step.* = GetFileSizeStep.init(b, .{ .path = kernel.image });
+            kernel_image_size_step.* = GetFileSizeStep.init(b, b.path(kernel.image));
         },
         .maros => {
             const kernel = b.addExecutable(.{
                 .name = "kernel",
-                .root_source_file = .{ .path = "kernel/start.zig" },
+                .root_source_file = b.path("kernel/start.zig"),
                 // TODO: for now we're only working with the boot target
                 .target = boot_target,
                 //.optimize = optimize,
                 .optimize = .ReleaseSmall,
             });
-            kernel.setLinkerScriptPath(.{ .path = "kernel/link.ld" });
+            kernel.setLinkerScriptPath(b.path("kernel/link.ld"));
 
             // TODO: in this change, override_dest_dir should affect installRaw
             //       https://github.com/ziglang/zig/pull/9975
@@ -125,7 +119,7 @@ pub fn build(b: *Builder) !void {
 // the bootloader should be enhanced to not need these hard-codings
 const bootloader_reserve_sector_count = 16;
 
-fn addQemuStep(b: *Builder, image_file: []const u8) !void {
+fn addQemuStep(b: *Build, image_file: []const u8) !void {
     var args = std.ArrayList([]const u8).init(b.allocator);
 
     const qemu_prog_name = "qemu-system-x86_64";
@@ -167,7 +161,7 @@ fn addQemuStep(b: *Builder, image_file: []const u8) !void {
     b.step("qemu", "Run maros in the Qemu VM").dependOn(&qemu.step);
 }
 
-fn addBochsStep(b: *Builder, image_file: []const u8) !void {
+fn addBochsStep(b: *Build, image_file: []const u8) !void {
     var args = std.ArrayList([]const u8).init(b.allocator);
     try args.append("bochs");
     try args.append("-f");
@@ -180,13 +174,13 @@ fn addBochsStep(b: *Builder, image_file: []const u8) !void {
     b.step("bochs", "Run maros in the Bochs VM").dependOn(&bochs.step);
 }
 
-fn addBootloaderSteps(b: *Builder, boot_target: std.zig.CrossTarget) !*GetFileSizeStep {
+fn addBootloaderSteps(b: *Build, boot_target: std.Build.ResolvedTarget) !*GetFileSizeStep {
     // compile this separately so that it can have a different release mode
     // it has to fit inside 446 bytes
     const use_zig_bootsector = if (b.option(bool, "zigboot", "enable experimental zig bootsector")) |o| o else false;
-    var zigbootsector = b.addObject(.{
+    const zigbootsector = b.addObject(.{
         .name = "zigbootsector",
-        .root_source_file = .{ .path = "boot/bootsector.zig" },
+        .root_source_file = b.path("boot/bootsector.zig"),
         .target = boot_target,
         .optimize = .ReleaseSmall,
     });
@@ -194,28 +188,28 @@ fn addBootloaderSteps(b: *Builder, boot_target: std.zig.CrossTarget) !*GetFileSi
     //       objects yet
     //zigbootsector.install();
 
-    var asmbootsector = b.addObject(.{
+    const asmbootsector = b.addObject(.{
         .name = "asmbootsector",
-        .root_source_file = .{ .path = "boot/bootsector.S" },
         .target = boot_target,
         .optimize = .ReleaseSmall,
     });
+    asmbootsector.addAssemblyFile(b.path("boot/bootsector.S"));
 
     const bin = b.addExecutable(.{
         .name = "bootloader.elf",
-        .root_source_file = .{ .path = "boot/zigboot.zig" },
+        .root_source_file = b.path("boot/zigboot.zig"),
         .target = boot_target,
         // this causes objdump to fail???
         //.optimize = .ReleaseSmall,
     });
-    bin.addAssemblyFile(.{ .path = "boot/bootstage2.S" });
+    bin.addAssemblyFile(b.path("boot/bootstage2.S"));
     if (use_zig_bootsector) {
         // zig bootsector may be a pipe dream
         bin.addObject(zigbootsector);
     } else {
         bin.addObject(asmbootsector);
     }
-    bin.setLinkerScriptPath(.{ .path = "boot/link.ld" });
+    bin.setLinkerScriptPath(b.path("boot/link.ld"));
 
     // install elf file for debugging
     const install_elf = b.addInstallArtifact(bin, .{
@@ -235,12 +229,12 @@ fn addBootloaderSteps(b: *Builder, boot_target: std.zig.CrossTarget) !*GetFileSi
 }
 
 const GetFileSizeStep = struct {
-    step: std.build.Step,
-    file_path: std.Build.LazyPath,
+    step: Build.Step,
+    file_path: Build.LazyPath,
     size: u64,
-    pub fn init(b: *Builder, file_path: std.Build.LazyPath) GetFileSizeStep {
+    pub fn init(b: *Build, file_path: Build.LazyPath) GetFileSizeStep {
         return .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "gets the size of a file",
                 .owner = b,
@@ -250,9 +244,9 @@ const GetFileSizeStep = struct {
             .size = undefined,
         };
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(GetFileSizeStep, "step", step);
+        const self: *GetFileSizeStep = @fieldParentPtr("step", step);
         const file_path = self.file_path.getPath2(step.owner, step);
         const file = std.fs.cwd().openFile(file_path, .{}) catch |e| {
             std.log.err("GetFileSizeStep failed to open '{s}': {}", .{file_path, e});
@@ -264,7 +258,7 @@ const GetFileSizeStep = struct {
     }
 
     // may only be called after this step has been executed
-    pub fn getResultingSize(self: *GetFileSizeStep, who_wants_to_know: *const std.build.Step) u64 {
+    pub fn getResultingSize(self: *GetFileSizeStep, who_wants_to_know: *const Build.Step) u64 {
         if (!hasDependency(who_wants_to_know, &self.step))
             @panic("GetFileSizeStep.getResultingSize may only be called by steps that depend on it");
         return self.getResultingSizeNoDepCheck();
@@ -277,17 +271,17 @@ const GetFileSizeStep = struct {
 };
 
 const InstallBootloaderStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     alloc_image_step: *AllocImageStep,
     bootloader_size_step: *GetFileSizeStep,
     pub fn create(
-        b: *Builder,
+        b: *Build,
         alloc_image_step: *AllocImageStep,
         bootloader_size_step: *GetFileSizeStep,
     ) *InstallBootloaderStep {
         const result = b.allocator.create(InstallBootloaderStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install the bootloader to the image",
                 .owner = b,
@@ -300,9 +294,9 @@ const InstallBootloaderStep = struct {
         result.step.dependOn(&bootloader_size_step.step);
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallBootloaderStep, "step", step);
+        const self: *InstallBootloaderStep = @fieldParentPtr("step", step);
         const bootloader_filename = self.bootloader_size_step.file_path.getPath2(step.owner, step);
         std.log.debug("installing bootloader '{s}' to '{s}'", .{
             bootloader_filename,
@@ -334,7 +328,7 @@ const InstallBootloaderStep = struct {
     }
 };
 
-fn hasDependency(step: *const std.build.Step, dep_candidate: *const std.build.Step) bool {
+fn hasDependency(step: *const Build.Step, dep_candidate: *const Build.Step) bool {
     for (step.dependencies.items) |dep| {
         // TODO: should probably use step.loop_flag to prevent infinite recursion
         //       when a circular reference is encountered, or maybe keep track of
@@ -346,12 +340,12 @@ fn hasDependency(step: *const std.build.Step, dep_candidate: *const std.build.St
 }
 
 const InstallKernelCmdlineStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     alloc_image_step: *AllocImageStep,
     cmdline: []const u8,
     sector_len: u32,
     pub fn create(
-        b: *Builder,
+        b: *Build,
         alloc_image_step: *AllocImageStep,
         cmdline: []const u8,
         sector_len: u32,
@@ -363,7 +357,7 @@ const InstallKernelCmdlineStep = struct {
 
         const result = b.allocator.create(InstallKernelCmdlineStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install kernel cmdline to image",
                 .owner = b,
@@ -376,9 +370,9 @@ const InstallKernelCmdlineStep = struct {
         result.step.dependOn(&alloc_image_step.step);
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallKernelCmdlineStep, "step", step);
+        const self: *InstallKernelCmdlineStep = @fieldParentPtr("step", step);
 
         // NOTE: it looks like even though we only write to the image file we also need
         //       read permissions to mmap it?
@@ -406,19 +400,19 @@ const InstallKernelCmdlineStep = struct {
 //       will need a LazyOffset
 //       maybe Zig build should have a general fn Lazy(comptime T: type)?
 const InstallKernelStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     kernel_image_size_step: *GetFileSizeStep,
     alloc_image_step: *AllocImageStep,
     sector_len: u32,
     pub fn create(
-        b: *Builder,
+        b: *Build,
         kernel_image_size_step: *GetFileSizeStep,
         alloc_image_step: *AllocImageStep,
         sector_len: u32,
     ) *InstallKernelStep {
         const result = b.allocator.create(InstallKernelStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install kernel to image",
                 .owner = b,
@@ -432,9 +426,9 @@ const InstallKernelStep = struct {
         result.step.dependOn(&alloc_image_step.step);
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallKernelStep, "step", step);
+        const self: *InstallKernelStep = @fieldParentPtr("step", step);
 
         const kernel_len = self.kernel_image_size_step.getResultingSize(step);
 
@@ -470,7 +464,7 @@ const InstallKernelStep = struct {
 const rootfs_bin_sub_path = "rootfs/bin";
 
 const InstallRootfsStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     kernel_image_size_step: *GetFileSizeStep,
     alloc_image_step: *AllocImageStep,
     image_file: []const u8,
@@ -478,17 +472,17 @@ const InstallRootfsStep = struct {
     sector_len: u32,
     fstype: Filesystem,
     pub fn create(
-        b: *Builder,
+        b: *Build,
         kernel_image_size_step: *GetFileSizeStep,
         alloc_image_step: *AllocImageStep,
         image_len: u64,
-        user_step: *std.Build.Step,
+        user_step: *Build.Step,
         sector_len: u32,
         fstype: Filesystem,
     ) *InstallRootfsStep {
         const result = b.allocator.create(InstallRootfsStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "install rootfs to image",
                 .owner = b,
@@ -506,9 +500,9 @@ const InstallRootfsStep = struct {
         result.step.dependOn(user_step);
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(InstallRootfsStep, "step", step);
+        const self: *InstallRootfsStep = @fieldParentPtr("step", step);
 
         // allocate ext3 image file
         {
@@ -588,7 +582,7 @@ const InstallRootfsStep = struct {
                 var block_count_string_buf: [20]u8 = undefined;
                 const block_count_string = std.fmt.bufPrint(&block_count_string_buf, "{}", .{block_count}) catch unreachable;
 
-                const result = try util.exec(allocator, &.{
+                const result = try util.run(allocator, &.{
                     "mkfs.ext3",
                     "-F",
                     "-b", block_size_string,
@@ -611,8 +605,14 @@ const InstallRootfsStep = struct {
         }
     }
 
-    fn installDir(fs: Filesystem, allocator: std.mem.Allocator, image_file: []const u8, src_dir_path: []const u8, dst_dir: []const u8) !void {
-        var src_dir = try std.fs.cwd().openIterableDir(src_dir_path, .{});
+    fn installDir(
+        fs: Filesystem,
+        allocator: std.mem.Allocator,
+        image_file: []const u8,
+        src_dir_path: []const u8,
+        dst_dir: []const u8,
+    ) !void {
+        var src_dir = try std.fs.cwd().openDir(src_dir_path, .{.iterate=true});
         defer src_dir.close();
 
         var it = src_dir.iterate();
@@ -625,7 +625,7 @@ const InstallRootfsStep = struct {
                 },
                 .sym_link => {
                     var target_buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-                    const target = try src_dir.dir.readLink(entry.name, &target_buf);
+                    const target = try src_dir.readLink(entry.name, &target_buf);
                     const dst = std.fs.path.join(allocator, &.{dst_dir, entry.name}) catch @panic("OOM");
                     defer allocator.free(dst);
                     try fsimage.installSymLink(fs, allocator, image_file, target, dst);
@@ -661,10 +661,10 @@ const fsimage = struct {
 
 
 const GenerateCombinedToolsSourceStep = struct {
-    step: std.build.Step,
-    pub fn init(builder: *Builder) GenerateCombinedToolsSourceStep {
+    step: Build.Step,
+    pub fn init(builder: *Build) GenerateCombinedToolsSourceStep {
         return .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "generate tools.gen.zig",
                 .owner = builder,
@@ -672,9 +672,9 @@ const GenerateCombinedToolsSourceStep = struct {
             }),
         };
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(GenerateCombinedToolsSourceStep, "step", step);
+        const self: *GenerateCombinedToolsSourceStep = @fieldParentPtr("step", step);
 
         const build_root = &self.step.owner.build_root.handle;
 
@@ -695,20 +695,20 @@ const GenerateCombinedToolsSourceStep = struct {
 };
 
 fn addUserSteps(
-    b: *Builder,
-    target: std.zig.CrossTarget,
+    b: *Build,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.Mode,
     config: *const Config,
     symlinker: symlinks.Symlinker,
-) !*std.Build.Step {
+) !*Build.Step {
     const build_user_step = b.step("user", "Build userspace");
-    const rootfs_install_bin_dir = std.build.InstallDir { .custom = rootfs_bin_sub_path };
+    const rootfs_install_bin_dir = Build.InstallDir { .custom = rootfs_bin_sub_path };
     if (config.combine_tools) {
         const gen_tools_file_step = try b.allocator.create(GenerateCombinedToolsSourceStep);
         gen_tools_file_step.* = GenerateCombinedToolsSourceStep.init(b);
         const exe = b.addExecutable(.{
             .name = "maros",
-            .root_source_file = .{ .path = "user/combined_root.zig" },
+            .root_source_file = b.path("user/combined_root.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -730,12 +730,12 @@ fn addUserSteps(
         inline for (cmdline_tools) |commandLineTool| {
             const exe = b.addExecutable(.{
                 .name = commandLineTool.name,
-                .root_source_file = .{ .path = "user/standalone_root.zig" },
+                .root_source_file = b.path("user/standalone_root.zig"),
                 .target = target,
                 .optimize = optimize,
             });
-            exe.addModule("tool", b.createModule(.{
-                .source_file = .{ .path = "user" ++ std.fs.path.sep_str ++ commandLineTool.name ++ ".zig" },
+            exe.root_module.addImport("tool", b.createModule(.{
+                .root_source_file = b.path("user" ++ std.fs.path.sep_str ++ commandLineTool.name ++ ".zig"),
             }));
             const install = b.addInstallArtifact(exe, .{
                 .dest_dir = .{ .override = rootfs_install_bin_dir },
@@ -748,14 +748,14 @@ fn addUserSteps(
 }
 
 const AllocImageStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     image_file: []const u8,
     image_len: u64,
-    pub fn init(b: *Builder, image_len: u64) AllocImageStep {
+    pub fn init(b: *Build, image_len: u64) AllocImageStep {
         const image_file = b.getInstallPath(.prefix, "maros.img");
         b.pushInstalledFile(.prefix, "maros.img");
         return .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "truncate image file",
                 .owner = b,
@@ -765,9 +765,9 @@ const AllocImageStep = struct {
             .image_len = image_len,
         };
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(AllocImageStep, "step", step);
+        const self: *AllocImageStep = @fieldParentPtr("step", step);
         if (std.fs.path.dirname(self.image_file)) |dirname| {
             try std.fs.cwd().makePath(dirname);
         }
@@ -793,13 +793,13 @@ fn enforceImageLen(image_file: std.fs.File, expected_len: usize) !void {
     );
 }
 const ZeroImageStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     image_file: []const u8,
     image_len: u64,
-    pub fn create(b: *Builder, image_file: []const u8, image_len: u64) *ZeroImageStep {
+    pub fn create(b: *Build, image_file: []const u8, image_len: u64) *ZeroImageStep {
         const result = b.allocator.create(ZeroImageStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = b.fmt("zero image file '{s}'", .{image_file}),
                 .owner = b,
@@ -810,9 +810,9 @@ const ZeroImageStep = struct {
         };
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(ZeroImageStep, "step", step);
+        const self: *ZeroImageStep = @fieldParentPtr("step", step);
         std.log.debug("zeroing image '{s}'", .{self.image_file});
         // NOTE: it looks like even though we only write to the image file we also need
         //       read permissions to mmap it?
@@ -877,20 +877,20 @@ fn getRootfsSectorCount(sector_len: u64, rootfs_image_len: u64) u32 {
 }
 
 const PartitionImageStep = struct {
-    step: std.build.Step,
+    step: Build.Step,
     image_file: []const u8,
     config: *const Config,
     bootloader_size_step: *GetFileSizeStep,
     kernel_image_size_step: *GetFileSizeStep,
     pub fn create(
-        b: *Builder,
+        b: *Build,
         config: *const Config,
         bootloader_size_step: *GetFileSizeStep,
         kernel_image_size_step: *GetFileSizeStep,
     ) *PartitionImageStep {
         const result = b.allocator.create(PartitionImageStep) catch @panic("OOM");
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Build.Step.init(.{
                 .id = .custom,
                 .name = "partition image file",
                 .owner = b,
@@ -905,9 +905,9 @@ const PartitionImageStep = struct {
         result.step.dependOn(&kernel_image_size_step.step);
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Build.Step, prog_node: std.Progress.Node) !void {
         _ = prog_node;
-        const self = @fieldParentPtr(PartitionImageStep, "step", step);
+        const self: *PartitionImageStep = @fieldParentPtr("step", step);
 
         // NOTE: it looks like even though we only write to the image file we also need
         //       read permissions to mmap it?
@@ -959,12 +959,12 @@ const PartitionImageStep = struct {
     }
 };
 fn addImageSteps(
-    b: *Builder,
+    b: *Build,
     config: *const Config,
     alloc_image_step: *AllocImageStep,
     bootloader_size_step: *GetFileSizeStep,
     kernel_image_size_step: *GetFileSizeStep,
-    user_step: *std.Build.Step,
+    user_step: *Build.Step,
 ) !void {
 
     const image_file = b.getInstallPath(.prefix, "maros.img");
